@@ -379,17 +379,24 @@ function follow(n) {
 // open a position here and play it (you're using this device now)
 function openHere(n) {
   following = false;
-  if (S.cur && S.cur.id === n.id) { if (Math.abs(pos() - n.pos) > 10) player.seekTo(n.pos, true); return; }
+  if (S.cur && S.cur.id === n.id) { if (Math.abs(pos() - n.pos) > 2) player.seekTo(n.pos, true); return; }
   if (S.cur && !ratings[S.cur.id]) saveProgress();
   if (S.cur) S.played.push(S.cur);
-  S.queue = []; $("#wait").textContent = ""; play(rowFor(n), Math.max(0, n.pos - 2)); S.secs = 3; fill();
+  S.queue = []; $("#wait").textContent = ""; play(rowFor(n), n.pos); S.secs = 3; fill();
 }
 
 function onMessage(b) {
   if (!b || b.dev === DEV) return;
+  // another device just opened and asks where we are: answer with the exact second, right away
+  if (b.ask) { if (S.cur && !following) announce(playingHere() ? "playing" : "paused"); return; }
   for (const e of b.events || []) applyEvent(e, true);
   saveAll();
   const n = b.now && { ...b.now, kind: b.kind || "laptop", dev: b.dev };
+  // waiting behind another device on the same video: keep our position on theirs
+  if (n && following && S.cur && S.cur.id === n.id && n.state !== "playing") {
+    try { if (Math.abs(pos() - n.pos) > 2) { player.seekTo(n.pos, true); player.pauseVideo(); } } catch {}
+    return;
+  }
   if (n && n.state === "playing" && !seen.has(n.id)) {
     if (playingHere() && KIND === "laptop" && n.kind === "phone") { annLast.key = ""; announce("playing"); return; }   // laptop wins
     follow(n);
@@ -404,6 +411,9 @@ function listen() {                                    // live link: messages ar
 
 // on open / return: catch up, then continue from the most recent position on any device (laptop if it's playing)
 async function pull() {
+  // ask any other open device for its exact position; its answer lands in the relay before we read it
+  try { await fetch(RELAY, { method: "POST", body: JSON.stringify({ dev: DEV, kind: KIND, ask: 1 }) }); } catch {}
+  await new Promise(r => setTimeout(r, 2500));
   try {
     const st = await fetch("state.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null);
     if (st) {
@@ -529,7 +539,7 @@ renderPrefs();
 if (!pref.zoom) pref.zoom = 1;
 load().then(async () => {
   listen();
-  const switched = await Promise.race([pull(), new Promise(r => setTimeout(() => r(false), 4000))]);
+  const switched = await Promise.race([pull(), new Promise(r => setTimeout(() => r(false), 7000))]);
   if (switched) { sync(); return; }
   // pick up where you left off on this device (or the most recent unfinished video anywhere)
   const resume = Object.entries(progress).filter(([id, p]) => !seen.has(id) && !ratings[id] && !p.soft).sort((a, b) => b[1].ts - a[1].ts)[0];
