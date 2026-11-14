@@ -12,25 +12,34 @@
 @periodicvideos | Chemistry
 @journeytomicro | Biology
 @eons | Biology
-@smartereveryday | Technology
-@PracticalEngineeringChannel | Technology
-@RealEngineering | Technology
+@smartereveryday | Engineering
+@PracticalEngineeringChannel | Engineering
+@RealEngineering | Engineering
 @FallofCivilizations | History
 @HistoriaCivilis | History
 @toldinstone | History
 @ThenNow | Philosophy
 @WirelessPhilosophy | Philosophy
 @academyofideas | Philosophy
-@NativLang | Humanities
-@ReligionForBreakfast | Humanities
+@NativLang | Language & Linguistics
+@ReligionForBreakfast | Religion & Mythology
 @CGPGrey | Humanities
-@Nerdwriter1 | Art
+@Nerdwriter1 | Film
 @GreatArtExplained | Art
-@everyframeapainting | Art
-@AdamNeely | Art
-@12tone | Art
+@everyframeapainting | Film
+@AdamNeely | Music
+@12tone | Music
 @PolyMatter | Economics
 @Wendoverproductions | Economics
 @CaspianReport | Geopolitics
 @BenFelixCSI | Finance
 @PBoyle | Finance
+@LessonsfromtheScreenplay | Film
+@GMTK | Game Design
+@DesignDoc | Game Design
+@StewartHicks | Architecture & Design
+@TwoMinutePapers | AI
+@BenEater | Computer Science
+@Langfocus | Language & Linguistics
+@GeologyHub | Earth & Climate
+@TastingHistory | Food Science

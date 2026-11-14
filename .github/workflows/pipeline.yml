@@ -53,6 +53,7 @@ jobs:
         env:
           VXP_PASSPHRASE: ${{ secrets.VXP_PASSPHRASE }}
           HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+          VXP_FULL: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
         run: python code/pipeline.py --data data --site site ${{ github.event_name == 'repository_dispatch' && '--quick' || '' }}
       - if: steps.ready.outputs.ok == 'true'
         name: Save encrypted database (data branch keeps one commit, so it doesn't grow)

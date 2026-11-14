@@ -96,7 +96,9 @@ async function load() {
   D.dim = feed.dim; D.generated = feed.generated;
   D.vec = Int8Array.from(atob(feed.vec), ch => ch.charCodeAt(0));
   D.rows = feed.rows.map((r, i) => ({ i, id: r[c.id], title: r[c.title], channel: r[c.channel], dur: r[c.duration],
-                                      topic: r[c.topic], p: r[c.p], views: r[c.views], kind: r[c.kind] }));
+                                      topic: r[c.topic], p: r[c.p], views: r[c.views], kind: r[c.kind],
+                                      s: c.s != null ? r[c.s] : null, n: c.n != null ? r[c.n] : null }));
+  D.topics = feed.topics || [...new Set(D.rows.map(r => r.topic))];
   D.byId = new Map(D.rows.map(r => [r.id, r]));
 }
 
@@ -117,29 +119,30 @@ function taste() {
 function cos(i, v) { let s = 0; const o = i * D.dim; for (let k = 0; k < D.dim; k++) s += D.vec[o + k] * v[k]; return s / 127; }
 
 // ---------------- what plays next ----------------
-// every 5 videos: taste, taste, ESSENTIAL (must-watch, least-seen topic), taste, EXPLORE (a channel you've never seen)
-const PATTERN = ["t", "t", "m", "t", "x"];
+// 1) inside a series (Episode 1, 2, 3…): the next episode, in order, until it's done
+// 2) otherwise: jump to the next topic in the cycle (History → Philosophy → Physics → …) and play its best video
+//    (cloud score + closeness to your taste). A series always starts from its earliest episode you haven't seen.
 function pickNext() {
   const busy = new Set([S.cur, ...S.queue].filter(Boolean).map(v => v.id));
   const free = D.rows.filter(r => !seen.has(r.id) && !busy.has(r.id) && !progress[r.id]);
   if (!free.length) return null;
-  const last = S.queue.length ? S.queue[S.queue.length - 1] : S.cur;
-  const slot = PATTERN[(stats.n + S.queue.length) % PATTERN.length];
-  const T = taste();
-  const tScore = r => r.p + (T ? 0.35 * cos(r.i, T) : 0) - (last && r.channel === last.channel ? 1 : 0) - 0.04 * (stats.channels[r.channel] || 0);
-  let pool = free.filter(r => r.kind === slot), v;
-  if (slot === "m" && pool.length) {
-    const least = Math.min(...pool.map(r => stats.topics[r.topic] || 0));
-    pool = pool.filter(r => (stats.topics[r.topic] || 0) === least);
-    v = pool.sort((a, b) => (b.views || 0) - (a.views || 0))[Math.floor(Math.random() * Math.min(3, pool.length))];
-  } else if (slot === "x" && pool.length) {
-    const fresh = pool.filter(r => !stats.channels[r.channel]);
-    v = (fresh.length ? fresh : pool)[Math.floor(Math.random() * (fresh.length || pool.length))];
-  } else {
-    pool = pool.length ? pool : free;
-    v = pool.sort((a, b) => tScore(b) - tScore(a))[0];
+  const last = S.queue.length ? S.queue[S.queue.length - 1] : (S.cur || S.played[S.played.length - 1]);
+  if (last && last.s) {
+    const ep = free.filter(r => r.s === last.s && r.n > last.n).sort((a, b) => a.n - b.n)[0];
+    if (ep) return ep;
   }
-  return v;
+  const T = taste();
+  const score = r => r.p + (T ? 0.35 * cos(r.i, T) : 0) - (last && r.channel === last.channel ? 1 : 0);
+  const order = D.topics, k = last ? order.indexOf(last.topic) : -1;
+  for (let step = 1; step <= order.length; step++) {
+    const t = order[(k + step + order.length) % order.length];
+    const pool = free.filter(r => r.topic === t);
+    if (!pool.length) continue;
+    let v = pool.sort((a, b) => score(b) - score(a))[0];
+    if (v.s) v = free.filter(r => r.s === v.s).sort((a, b) => a.n - b.n)[0];   // start the series at the beginning
+    return v;
+  }
+  return free.sort((a, b) => score(b) - score(a))[0];
 }
 function fill() { while (S.queue.length < 2) { const v = pickNext(); if (!v) break; S.queue.push(v); } }
 

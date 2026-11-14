@@ -28,8 +28,10 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 - Close the app mid-video and it resumes there, on any synced device.
 
 ## What plays
-Every 5 videos: **3 for your taste**, **1 essential** (must-watch channels from `essentials.txt`, rotating through the
-topics you've seen least), **1 explore** (a channel you've never been shown).
+Topics take turns: after a video, the next one comes from the next topic in the cycle (29 topics, from History → Physics →
+Film → Economics → … to Nature; edit `CATEGORIES` in fetcher.py), the best video of that topic for you. A series (Episode 1, 2, 3…, Part 1/2…) plays in order
+to the end before the topic moves on, and always starts from its earliest episode you haven't seen.
+The pool mixes your subscriptions, the must-watch channels in `essentials.txt` and new channels found by topic searches.
 
 ## How it learns (GitHub Actions, every 6 h and shortly after you react)
 1. **Candidates** (yt-dlp page listings, no API key): channels in `subscriptions.txt` and `essentials.txt`,

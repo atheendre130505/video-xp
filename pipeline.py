@@ -13,7 +13,7 @@ SITE_DIR receives the GitHub Pages site:
 
 --quick: skip the big crawl (it runs at most every FULL_CRAWL_HOURS).
 """
-import argparse, base64, glob, json, logging, os, random, shutil, sys, tempfile, time
+import argparse, base64, glob, hashlib, json, logging, os, re, random, shutil, sys, tempfile, time
 from collections import defaultdict
 from pathlib import Path
 
@@ -25,7 +25,23 @@ POOL_TASTE = 300          # best for your taste (model score + closeness to your
 POOL_MUST = 160           # essentials: best of the must-watch channels, spread over topics
 POOL_EXPLORE = 160        # channels you've never been shown
 PER_CHANNEL_TASTE = 8     # so one channel can't fill the taste pool
-SEARCHES_PER_RUN = 12     # category searches per full run; categories and their queries rotate
+PER_TOPIC = 30            # + the best videos of every topic, so the app can rotate through all of them
+SERIES_MAX = 15           # episodes shipped per series
+# "Episode 4", "Ep. 4", "Part 2", "Chapter 3", "(3/10)", "3 of 10"
+EPISODE = re.compile(r"\b(?:episode|ep\.?|part|pt\.?|chapter|chap\.?)\s*#?\s*(\d{1,3})\b|"
+                     r"\((\d{1,3})\s*/\s*\d{1,3}\)|\b(\d{1,3})\s+of\s+\d{1,3}\b", re.I)
+
+
+def episode(r):
+    """(series key, episode number) from the title, or None. Same channel + same title before the marker = same series."""
+    m = EPISODE.search(r["title"] or "")
+    if not m:
+        return None
+    n = int(next(g for g in m.groups() if g))
+    stem = re.sub(r"[^a-z0-9]+", " ", r["title"][:m.start()].lower()).strip()
+    key = hashlib.sha1(f"{r['channel']}|{stem}".encode()).hexdigest()[:10]
+    return key, n
+SEARCHES_PER_RUN = 29     # category searches per full run (one per topic); their queries rotate
 EXPAND_MAX = 15           # at most this many liked videos expanded per run
 CRAWL_MINUTES = 25        # crawling stops after this long; training always gets its turn
 PCA_DIM = 128             # app vectors: 384-d MiniLM embeddings projected to 128-d
@@ -57,7 +73,7 @@ def main():
     processed = ingest_events(data, pw)
     ingest_relay()
     full_due = time.time() - float(db.kv_get("last_full_crawl", 0)) > FULL_CRAWL_HOURS * 3600 - 600
-    quick = a.quick or not full_due
+    quick = (a.quick or not full_due) and not os.environ.get("VXP_FULL")    # manual runs always crawl fully
     try:
         crawl(quick)
         if not quick:
@@ -207,6 +223,39 @@ def export_site(site):
         taste /= np.linalg.norm(taste)
     sim = Z @ taste
 
+    # one topic per video: categories as they are; subscription videos (filed under the channel) by meaning
+    cats = list(fetcher.CATEGORIES)
+    cemb = model.embeddings([("cat:" + c, f"{c}: " + ", ".join(fetcher.CATEGORIES[c])) for c in cats])
+    # each topic = its description + the average of videos already known to belong to it (topic searches,
+    # must-watch channels), which is far more reliable than the description alone
+    Cm = []
+    for c in cats:
+        v = cemb["cat:" + c].astype(np.float32)
+        known_i = [i for i, r in enumerate(rows) if r["topic"] == c]
+        if len(known_i) >= 5:
+            m = E[known_i].mean(axis=0)
+            v = v / (np.linalg.norm(v) or 1) + 2 * m / (np.linalg.norm(m) or 1)
+        Cm.append(v / (np.linalg.norm(v) or 1))
+    best_cat = (E @ np.stack(Cm).T).argmax(axis=1)
+    for i, r in enumerate(rows):
+        if r["topic"] not in fetcher.CATEGORIES:
+            r["topic"] = cats[int(best_cat[i])]
+
+    # series: same channel + same title stem + an episode number; at least two episodes to count
+    eps = defaultdict(dict)                                   # key -> {episode number: row index}
+    for i, r in enumerate(rows):
+        e = episode(r)
+        if e:
+            eps[e[0]].setdefault(e[1], i)
+    series = {k: v for k, v in eps.items() if len(v) >= 2}
+    ser_of = {}
+    for k, v in series.items():
+        topic = rows[v[min(v)]]["topic"]                      # a whole series stays in one topic
+        for n, i in v.items():
+            ser_of[i] = (k, n)
+            rows[i]["topic"] = topic
+    log.info("topics assigned; %d series found", len(series))
+
     shown_channels = {r["channel"] for r in db.q(
         "SELECT DISTINCT v.channel FROM events e JOIN videos v ON v.id = e.video_id")}
     idx = list(range(len(rows)))
@@ -251,13 +300,28 @@ def export_site(site):
             if n_x >= POOL_EXPLORE:
                 break
 
+    # every topic: its best videos (the app rotates through topics)
+    by_t = defaultdict(list)
+    for i in idx:
+        by_t[rows[i]["topic"]].append(i)
+    for t, ii in by_t.items():
+        for i in sorted(ii, key=lambda i: -(rows[i]["p_watch"] + 0.3 * float(sim[i])))[:PER_TOPIC]:
+            chosen.setdefault(i, "t")
+    # series: if any episode is in the feed, ship the series (so it can be played in order)
+    for i in list(chosen):
+        if i in ser_of:
+            for n, j in sorted(series[ser_of[i][0]].items())[:SERIES_MAX]:
+                chosen.setdefault(j, chosen[i])
+
     sel = sorted(chosen, key=lambda i: -rows[i]["p_watch"])
     q8 = lambda M: np.clip(np.round(M * 127), -127, 127).astype(np.int8)
     gen = int(time.time())                                    # same stamp on feed + state: the app checks they match
     feed = {"generated": gen, "dim": PCA_DIM,
-            "cols": ["id", "title", "channel", "duration", "topic", "p", "views", "kind"],
+            "topics": [c for c in cats if any(rows[i]["topic"] == c for i in sel)],   # the rotation order
+            "cols": ["id", "title", "channel", "duration", "topic", "p", "views", "kind", "s", "n"],
             "rows": [[rows[i]["id"], rows[i]["title"], rows[i]["channel"], rows[i]["duration"], rows[i]["topic"],
-                      round(float(rows[i]["p_watch"]), 4), rows[i]["views"], chosen[i]] for i in sel],
+                      round(float(rows[i]["p_watch"]), 4), rows[i]["views"], chosen[i],
+                      ser_of.get(i, (None, None))[0], ser_of.get(i, (None, None))[1]] for i in sel],
             "vec": base64.b64encode(q8(Z[sel]).tobytes()).decode()}
     site.mkdir(parents=True, exist_ok=True)
     for name in ("index.html", "icon.png"):
