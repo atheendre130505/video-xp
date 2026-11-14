@@ -58,7 +58,6 @@
   <button class="good" id="good" title="Good recommendation (G)">👍</button>
   <button class="bad" id="bad" title="Not good (B)">👎</button>
   <button class="txt" id="cc" title="Captions (C)">CC</button>
-  <button class="txt" id="speed" title="Speed: ] faster, [ slower">1×</button>
   <button class="txt" id="fs" title="Full screen (F)">⛶</button>
 </div>
 <div id="adpill">Ad · use YouTube’s “Skip” button in the video</div>
@@ -166,13 +165,6 @@ function next() {
   if (ratings[S.cur.id] || seen.has(S.cur.id)) return advance();      // went back to something already rated
   ask();
 }
-// jump within the video (→ ← keys, double-tap / double-click a side: 5 s). Jumping ahead repeatedly counts as rushing.
-function seek(d) {
-  if (!player || !player.seekTo || !S.cur) return;
-  player.seekTo(Math.max(0, (player.getCurrentTime() || 0) + d), true);
-  if (d > 0) S.skips += 1;
-  toast((d > 0 ? "+" : "") + d + "s");
-}
 function back() { if (!S.played.length) return; saveProgress(true); if (S.cur) S.queue.unshift(S.cur); play(S.played.pop()); }
 
 function play(v, at = 0, paused = false) {
@@ -234,7 +226,9 @@ setInterval(() => {
   const ad = adPlaying();
   document.body.classList.toggle("ad", ad);
   if (ad) return;                                       // ad time is not watch time
-  if (player && player.getPlayerState && player.getPlayerState() === 1) { skipSponsor(); const rate = player.getPlaybackRate() || 1; S.secs += 1; S.watched += rate; if (rate >= 1.75) S.fast += 1;
+  if (player && player.getPlayerState && player.getPlayerState() === 1) { skipSponsor();
+    if (player.getPlaybackRate && player.getPlaybackRate() !== SPEED) player.setPlaybackRate(SPEED);
+    const rate = player.getPlaybackRate() || 1; S.secs += 1; S.watched += rate; if (rate >= 1.75) S.fast += 1;
     if (S.secs % 15 === 0) saveProgress();
     if (S.secs % 180 === 0) announce("playing"); }
 }, 1000);
@@ -444,18 +438,13 @@ function mergeProgress(id, p) {
                                              d: p.d || old?.d || row?.dur, g: p.g || old?.g || row?.topic, soft: p.soft ? 1 : 0 };
 }
 
-// ---------------- captions + speed ----------------
-const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
-const pref = LS.get("pref", { cc: false, speed: 1 });
-function applyPrefs() { if (!player || !player.setPlaybackRate) return; player.setPlaybackRate(pref.speed); setCaptions(pref.cc); renderPrefs(); }
+// ---------------- captions; every video plays at a fixed 1.25x ----------------
+const SPEED = 1.25;
+const pref = LS.get("pref", { cc: false });
+function applyPrefs() { if (!player || !player.setPlaybackRate) return; player.setPlaybackRate(SPEED); setCaptions(pref.cc); renderPrefs(); }
 function setCaptions(on) { try { if (on) { player.loadModule("captions"); player.setOption("captions", "track", { languageCode: "en" }); } else { player.setOption("captions", "track", {}); player.unloadModule("captions"); } } catch {} }
 function toggleCaptions() { pref.cc = !pref.cc; LS.set("pref", pref); setCaptions(pref.cc); renderPrefs(); toast(pref.cc ? "Captions on" : "Captions off"); }
-function changeSpeed(dir) {
-  const i = SPEEDS.indexOf(pref.speed);
-  pref.speed = SPEEDS[dir === 0 ? (i + 1) % SPEEDS.length : Math.min(SPEEDS.length - 1, Math.max(0, (i < 0 ? 1 : i) + dir))];
-  LS.set("pref", pref); if (player && player.setPlaybackRate) player.setPlaybackRate(pref.speed); renderPrefs(); toast(pref.speed + "×");
-}
-function renderPrefs() { $("#cc").classList.toggle("on", pref.cc); $("#speed").textContent = pref.speed + "×"; $("#speed").classList.toggle("on", pref.speed !== 1); }
+function renderPrefs() { $("#cc").classList.toggle("on", pref.cc); }
 let toastT; function toast(m) { $("#toast").textContent = m; $("#toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("#toast").classList.remove("show"), 1400); }
 
 const sheetOpen = () => false;
@@ -481,8 +470,7 @@ function togglePause() { autoPaused = false; if (!player || !player.getPlayerSta
 document.addEventListener("keydown", e => {
   activate();
   const k = e.key.toLowerCase();
-  if (k === "arrowright") { e.preventDefault(); seek(5); }
-  else if (k === "arrowleft") { e.preventDefault(); seek(-5); }
+  if (k === "arrowright" || k === "arrowleft") { e.preventDefault(); }       // no skipping within a video
   else if (k === "arrowdown" || k === "n") { e.preventDefault(); next(); }
   else if (k === "arrowup" || k === "backspace") { e.preventDefault(); back(); }
   else if (k === " ") { e.preventDefault(); togglePause(); }
@@ -490,17 +478,13 @@ document.addEventListener("keydown", e => {
   else if (k === "b" || k === "d") react(-1);
   else if (k === "c") toggleCaptions();
   else if (k === "f") toggleFullscreen();
-  else if (k === "]" || k === ">") changeSpeed(1);
-  else if (k === "[" || k === "<") changeSpeed(-1);
 });
-// single tap / click = pause (after a short wait, in case it's a double); double on the right / left half = 5 s forward / back
-let tapT = null;
+// tap / click = pause or play
 $("#layer").addEventListener("click", e => {
   const first = !S.activated; activate();
   if (IS_PHONE) showControls(4000);
   if (first) return;
-  if (tapT) { clearTimeout(tapT); tapT = null; seek(e.clientX > innerWidth / 2 ? 5 : -5); return; }
-  tapT = setTimeout(() => { tapT = null; if (!S.ended) togglePause(); }, 260);
+  if (!S.ended) togglePause();
 });
 let touch = null;
 $("#layer").addEventListener("touchstart", e => { const t = e.touches[0]; touch = { x: t.clientX, y: t.clientY, at: Date.now() }; }, { passive: true });
@@ -513,7 +497,7 @@ $("#layer").addEventListener("touchend", e => {
 });
 $("#good").onclick = () => react(1);
 $("#bad").onclick = () => react(-1);
-$("#cc").onclick = toggleCaptions; $("#speed").onclick = () => changeSpeed(0);
+$("#cc").onclick = toggleCaptions;
 $("#fs").onclick = toggleFullscreen;
 const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
 function renderFs() { $("#fs").classList.toggle("on", isFull()); $("#fs").title = isFull() ? "Exit full screen (F)" : "Full screen (F)"; }
