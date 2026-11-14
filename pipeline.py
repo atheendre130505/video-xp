@@ -28,7 +28,8 @@ SEARCHES_PER_RUN = 12     # category searches per full run; categories and their
 EXPAND_MAX = 15           # at most this many liked videos expanded per run
 CRAWL_MINUTES = 25        # crawling stops after this long; training always gets its turn
 PCA_DIM = 128             # app vectors: 384-d MiniLM embeddings projected to 128-d
-W_GOOD, W_BAD, W_SOFT = 1.0, -0.7, -0.35      # how far a reaction moves the taste vector
+# how far each reaction moves the taste vector (rushed = watched at ~2x or kept skipping ahead)
+W_GOOD, W_RUSHED_GOOD, W_BAD, W_SOFT = 1.0, 0.4, -0.7, -0.35
 
 
 def main():
@@ -157,12 +158,12 @@ def export_site(site, pw):
     proj = lambda X: (lambda Z: Z / (np.linalg.norm(Z, axis=-1, keepdims=True) + 1e-9))((X - mean) @ P)
     Z = proj(E)
 
-    # taste vector: pulled toward what you called good, pushed away from not good / fast skips; recent counts more
+    # taste vector: pulled toward what you called good, pushed away from not good / rushed-and-abandoned; recent counts more
     taste = np.zeros(PCA_DIM, dtype=np.float32)
     order = sorted((v for v in reacted if v in emb), key=lambda v: -reacted[v][1]["ts"])
     for k, vid in enumerate(order):
         y, m = reacted[vid]
-        w = W_GOOD if y == 1 else (W_SOFT if m.get("soft") else W_BAD)
+        w = (W_RUSHED_GOOD if m.get("soft") else W_GOOD) if y == 1 else (W_SOFT if m.get("soft") else W_BAD)
         taste += (0.985 ** k) * w * proj(emb[vid])
     if np.linalg.norm(taste) > 0:
         taste /= np.linalg.norm(taste)

@@ -1,6 +1,7 @@
 """Model: predict whether you'd call a video good.
 
-Signal    only your reactions: good / not good / moved on within 10 seconds (soft dislike).
+Signal    only your reactions: good / not good. Rushing (~2x, skipping ahead) weakens a good and,
+          with no reaction at all, counts as a soft dislike.
           Watch time and your old YouTube history do NOT shape taste (history only prevents repeats).
 Features  384-d embedding of "title | channel" (all-MiniLM-L6-v2, runs on CPU), video numbers (length, views, …),
           and you: your reactions on that channel, similarity to what you called good / not good, subscribed or not.
@@ -125,21 +126,27 @@ def _sim(e, group, exclude):
 
 
 def engagement_by_video():
-    """video_id -> (label, {w, ts}). Only your reactions count:
-         good = 1 (weight 2) · not good = 0 (weight 2) · moved on within 10 s = soft dislike, 0 (weight 1).
-       Videos you haven't reacted to carry no label (they stay "in progress")."""
+    """video_id -> (label, {w, ts, soft}). Only your reactions count:
+         good = 1 (weight 2; weight 1 if you rushed through it) · not good = 0 (weight 2)
+         rushed through it (~2x or kept skipping ahead) and never reacted = soft dislike, 0 (weight 1).
+       Other videos you haven't reacted to carry no label (they stay "in progress")."""
     agg = {}
-    for e in db.events():                       # oldest first, so the latest reaction wins
+    for e in db.events():                       # oldest first, so the latest report wins
         a = agg.setdefault(e["video_id"], {"liked": None, "soft": 0, "ts": 0})
         a["ts"] = max(a["ts"], e["ts"] or 0)
         if e["liked"] is not None:
             a["liked"], a["soft"] = e["liked"], e.get("soft") or 0
+        elif a["liked"] is None:
+            a["soft"] = e.get("soft") or 0
     out = {}
     for vid, a in agg.items():
+        soft = bool(a["soft"])
         if a["liked"] == 1:
-            out[vid] = (1.0, {"w": 2.0, "ts": a["ts"]})
+            out[vid] = (1.0, {"w": 1.0 if soft else 2.0, "ts": a["ts"], "soft": soft})
         elif a["liked"] == -1:
-            out[vid] = (0.0, {"w": 1.0 if a["soft"] else 2.0, "ts": a["ts"], "soft": bool(a["soft"])})
+            out[vid] = (0.0, {"w": 2.0, "ts": a["ts"], "soft": False})
+        elif soft:
+            out[vid] = (0.0, {"w": 1.0, "ts": a["ts"], "soft": True})
     return out
 
 

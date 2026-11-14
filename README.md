@@ -12,9 +12,12 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 | next | → : asks for your reaction first | swipe up |
 | back | ← | swipe down |
 | pause | click, Space | tap |
+| skip 10 s ahead / back | ↑ / ↓, or double-click right / left | double-tap right / left |
 | captions, speed | C, [ ] | tap → CC, 1× |
 
-- A video never advances on its own. Moving on **within 10 seconds** counts as a soft "not good".
+- A video never advances on its own, and next always asks for your reaction first.
+- **Rushing** (watching at about 2x, or skipping ahead 3+ times) is a signal: a rushed "good" counts less,
+  and a rushed video you leave without reacting counts as a soft "not good".
 - Anything you reacted to is never shown again (it stays in the database for learning).
 - Close the app mid-video and it resumes there, on any synced device.
 
@@ -28,7 +31,7 @@ topics you've seen least), **1 explore** (a channel you've never been shown).
    shouting titles are kept out of the essential and explore slots.
 2. **NLP model:** every title+channel is embedded with all-MiniLM-L6-v2 (a small pretrained language model),
    so "Japanese joinery" sits near "Swiss watchmaking" without shared tags.
-3. **Taste vector:** the average direction of what you called good, pushed away from not good and fast skips.
+3. **Taste vector:** the average direction of what you called good, pushed away from not good and rushed-and-abandoned videos.
    Ranking uses closeness to it; the app also nudges it instantly on your device after every reaction.
 4. **Deep model:** an MLP on the embedding + video numbers + your reactions per channel, trained on your
    reactions once there are 20+. Before that, a simple prior (subscriptions, essentials, popularity).
