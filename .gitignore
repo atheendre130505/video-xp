@@ -1,0 +1,14 @@
+# personal data never goes into git unencrypted (the encrypted copy lives on the `data` branch)
+videoxp.db
+videoxp.db-*
+*.db
+*.enc
+*.env
+watch-history.*
+# local stuff
+.venv/
+__pycache__/
+.claude/
+site/feed.json
+site/catalog.*
+site/pca.bin

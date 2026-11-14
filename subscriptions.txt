@@ -1,0 +1,56 @@
+# Channels you're subscribed to: their videos go into the pool, and "subscribed" is a model feature.
+# One per line: @handle or a channel URL. Lines starting with # are ignored. Edit any time (picked up on restart).
+@business                      # Bloomberg Originals
+@EconomicsExplained
+@kurzgesagt
+@DwarkeshPatel
+@CNBC-TV18
+@cnbcawaaz
+@Foodpharmer
+@CNBCi                         # CNBC International
+@TED
+@Forbes
+@Google
+@interestingengineeringie
+@TEDx
+@bigthink
+@ThePlainBagel
+@CNBC
+@ColdFusion
+@ScrollIn
+@bbcnewsindia
+@CARachanaRanade
+@Vsauce
+@JackChappleShow
+@Newsthink
+@TEDEd
+@Computerphile
+@Apple
+@eoglobal
+@econplusdal
+@frontline
+@SeeKen
+@billgates
+@marvel
+@UNFILTEREDbySamdish
+@foundersfundmafia
+@SandeepSeminars
+@_foundersfund
+@WhatIveLearned
+@facebookapp
+@QuantaScienceChannel
+@PracticalPsychologyTips
+@tecmath
+@Seeker
+@IndianTreasuryofWisdom
+@TopThink
+@FreedominThought
+@ImprovementPill
+@HowtoStartaStartupIIMAhmedabad
+@thecooperacademy
+@BetterThanYesterday
+@BusinessCasual
+https://www.youtube.com/channel/UCA295QVkf9O1RQ8_-s3FVXg   # Aevy TV ("avey tv")
+@VarunMayya
+@veritasium
+https://www.youtube.com/channel/UCphTF9wHwhCt-BzIq-s4V-g   # What If

@@ -1,0 +1,5 @@
+# GitHub Actions (torch is installed separately from the CPU index)
+numpy
+sentence-transformers
+cryptography
+yt-dlp
