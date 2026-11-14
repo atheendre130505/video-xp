@@ -7,7 +7,8 @@ DATA_DIR is a checkout of the repo's `data` branch:
     events/*.json       watch data your phone uploaded (encrypted the same way, in the browser)
 SITE_DIR receives index.html + feed.json for GitHub Pages (public: only the recommended-video feed).
 
---quick (after the phone uploads events): no searches, just your data + channel uploads of what you kept watching.
+--quick (the phone uploaded watch data and sent a "watch-data" repository_dispatch): no searches, just your data
+        + channel uploads of what you kept watching.
 """
 import argparse, base64, glob, json, logging, os, random, shutil, sys, tempfile, time
 from pathlib import Path
