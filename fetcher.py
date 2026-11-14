@@ -41,8 +41,8 @@ CATEGORIES = {   # queries chosen to find documentaries / explainers, not school
 CURRICULUM = re.compile(r"\b(class\s*\d{1,2}|std\s*\d{1,2}|grade\s*\d{1,2}|ncert|cbse|icse|jee|neet|upsc|ssc|"
                         r"board exams?|one shot|chapter\s*\d+|lecture\s*\d+|ch[\s.-]*\d+|for kids|exam|syllabus|"
                         r"revision|gcse|a[ -]level|ap (physics|chemistry|biology)|mcqs?|pyqs?)\b", re.I)
-CLICKBAIT = re.compile(r"(!!+|\?\?+|(shocking|insane|you won'?t believe|gone wrong|destroy(s|ed)|exposed|"
-                       r"mind[- ]?blow\w*|secret they|nobody tells|will blow|must see|omg|wtf)|[🌀-🫿])", re.I)
+CLICKBAIT = re.compile(r"(!!+|\?\?+|\b(shocking|insane|you won'?t believe|gone wrong|destroy(s|ed)|exposed|"
+                       r"mind[- ]?blow\w*|secret they|nobody tells|will blow|must see|omg|wtf)\b|[🌀-🫿])", re.I)
 
 
 def clickbait(title):
@@ -54,7 +54,7 @@ def clickbait(title):
 
 def filler(r):
     """Background / sleep content: fine to exist, but not for the essential or explore slots."""
-    return bool(re.search(r"(sleep\w*|asmr|relax\w*|ambience|lofi|white noise)", f"{r.get('title')} {r.get('channel')}", re.I))
+    return bool(re.search(r"\b(sleep\w*|asmr|relax\w*|ambience|lofi|white noise)\b", f"{r.get('title')} {r.get('channel')}", re.I))
 
 
 SUBSCRIPTIONS_FILE = Path(__file__).with_name("subscriptions.txt")
