@@ -54,9 +54,7 @@
   .btn { font:inherit; font-weight:600; border:0; border-radius:10px; padding:10px 16px; cursor:pointer; background:#2a2d33; color:#eee; }
   .btn.pri { background:var(--acc); color:#111; }
   label { display:block; font-size:13px; color:var(--dim); margin:12px 0 4px; }
-  #rail .zoom { display:none; font-size:22px; }
-  #player { transition:transform .2s; transform-origin:50% 50%; }
-  body.phone #rail .zoom { display:block; }
+  #rail #fs { font-size:24px; }
   body.phone #rail { right:12px; gap:11px; } body.phone #rail button { width:54px; height:54px; font-size:23px; }
 </style>
 </head>
@@ -69,8 +67,7 @@
   <button class="bad" id="bad" title="Not good (B)">👎</button>
   <button class="txt" id="cc" title="Captions (C)">CC</button>
   <button class="txt" id="speed" title="Speed: ] faster, [ slower">1×</button>
-  <button class="txt zoom" id="zin" title="Zoom in">＋</button>
-  <button class="txt zoom" id="zout" title="Zoom out">－</button>
+  <button class="txt" id="fs" title="Full screen (F)">⛶</button>
 </div>
 <div id="asklabel">Good recommendation?<br>tap 👍 or 👎</div>
 <div id="adpill">Ad · use YouTube’s “Skip” button in the video</div>
@@ -158,6 +155,8 @@ function fill() { while (S.queue.length < 2) { const v = pickNext(); if (!v) bre
 // ---------------- playback ----------------
 let player = null, ytReady = false;
 window.onYouTubeIframeAPIReady = () => { ytReady = true; };
+// the API may finish loading before this script runs (cached), and then the callback above never fires
+const ytOk = () => ytReady || !!(window.YT && window.YT.loaded && window.YT.Player);
 
 function advance() {
   saveProgress(true);
@@ -193,7 +192,7 @@ function play(v, at = 0, paused = false) {
       playerVars: { autoplay: paused ? 0 : 1, mute: 1, controls: 0, disablekb: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, fs: 0,
                     start: Math.floor(at), cc_load_policy: pref.cc ? 1 : 0, cc_lang_pref: "en" },
       events: {
-        onReady: () => { if (S.activated) player.unMute(); if (pref.zoom > 1) setZoom(pref.zoom); },
+        onReady: () => { if (S.activated) player.unMute(); },
         onStateChange: e => {
           if (e.data === YT.PlayerState.ENDED) { S.ended = true; if (S.cur && !ratings[S.cur.id]) ask(); }   // never auto-advances
           if (e.data === YT.PlayerState.PLAYING && S.applied !== S.cur?.id) { S.applied = S.cur?.id; applyPrefs(); }
@@ -202,7 +201,7 @@ function play(v, at = 0, paused = false) {
         },
         onError: () => { if (S.cur) { seen.add(S.cur.id); LS.set("seen", [...seen].slice(-8000)); } S.cur = null; advance(); } } });
   };
-  if (ytReady) go(); else { const t = setInterval(() => { if (ytReady) { clearInterval(t); go(); } }, 150); }
+  if (ytOk()) go(); else { const t = setInterval(() => { if (ytOk()) { clearInterval(t); go(); } }, 150); }
 }
 // ---------------- ads ----------------
 // 1) Sponsor reads inside a video: skipped automatically, using SponsorBlock's community timestamps.
@@ -462,11 +461,6 @@ function changeSpeed(dir) {
   pref.speed = SPEEDS[dir === 0 ? (i + 1) % SPEEDS.length : Math.min(SPEEDS.length - 1, Math.max(0, (i < 0 ? 1 : i) + dir))];
   LS.set("pref", pref); if (player && player.setPlaybackRate) player.setPlaybackRate(pref.speed); renderPrefs(); toast(pref.speed + "×");
 }
-function setZoom(z) {
-  pref.zoom = Math.min(3, Math.max(1, Math.round(z * 4) / 4)); LS.set("pref", pref);
-  const el = document.getElementById("player"); if (el) el.style.transform = pref.zoom === 1 ? "" : `scale(${pref.zoom})`;
-  toast(pref.zoom === 1 ? "Zoom: fit" : `Zoom ${pref.zoom}×`);
-}
 function renderPrefs() { $("#cc").classList.toggle("on", pref.cc); $("#speed").textContent = pref.speed + "×"; $("#speed").classList.toggle("on", pref.speed !== 1); }
 let toastT; function toast(m) { $("#toast").textContent = m; $("#toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("#toast").classList.remove("show"), 1400); }
 
@@ -482,9 +476,12 @@ function activate() {
   }).catch(() => {});
 }
 function toggleFullscreen() {
-  const el = document.documentElement;
-  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-  else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+  const el = document.documentElement, enter = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (document.fullscreenElement || document.webkitFullscreenElement) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  if (!enter) { toast("Full screen: Share → Add to Home Screen, then open it from there"); return; }   // iPhone Safari
+  Promise.resolve(enter.call(el)).then(() => {
+    if (IS_PHONE && screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(() => {});
+  }).catch(() => {});
 }
 function togglePause() { autoPaused = false; if (!player || !player.getPlayerState) return; player.getPlayerState() === 1 ? player.pauseVideo() : player.playVideo(); }
 document.addEventListener("keydown", e => {
@@ -523,7 +520,10 @@ $("#layer").addEventListener("touchend", e => {
 $("#good").onclick = () => react(1);
 $("#bad").onclick = () => react(-1);
 $("#cc").onclick = toggleCaptions; $("#speed").onclick = () => changeSpeed(0);
-$("#zin").onclick = () => setZoom((pref.zoom || 1) + 0.25); $("#zout").onclick = () => setZoom((pref.zoom || 1) - 0.25);
+$("#fs").onclick = toggleFullscreen;
+const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+function renderFs() { $("#fs").classList.toggle("on", isFull()); $("#fs").title = isFull() ? "Exit full screen (F)" : "Full screen (F)"; }
+document.addEventListener("fullscreenchange", renderFs); document.addEventListener("webkitfullscreenchange", renderFs);
 
 let idle;
 function showControls(ms = 2200) {
@@ -536,7 +536,6 @@ document.addEventListener("touchstart", e => { if (e.target.closest(".ctl")) sho
 // ---------------- start ----------------
 if (location.hash) history.replaceState(null, "", location.pathname);    // old setup links: nothing to set up any more
 renderPrefs();
-if (!pref.zoom) pref.zoom = 1;
 load().then(async () => {
   listen();
   const switched = await Promise.race([pull(), new Promise(r => setTimeout(() => r(false), 7000))]);

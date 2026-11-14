@@ -14,8 +14,7 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 | pause | click, Space | tap |
 | skip 5 s ahead / back | → / ←, or double-click right / left | double-tap right / left |
 | captions, speed | C, [ ] | tap → CC, 1× |
-| full screen | F | (automatic on first tap) |
-| zoom in / out | | tap → ＋ / － |
+| full screen on / off | F | tap → ⛶ |
 
 - A video never advances on its own, and next always asks for your reaction first.
 - **Rushing** (watching at about 2x, or skipping ahead 3+ times) is a signal: a rushed "good" counts less,
