@@ -40,7 +40,8 @@ CATEGORIES = {   # queries chosen to find documentaries / explainers, not school
 # school-curriculum / exam-prep videos are dropped as candidates
 CURRICULUM = re.compile(r"\b(class\s*\d{1,2}|std\s*\d{1,2}|grade\s*\d{1,2}|ncert|cbse|icse|jee|neet|upsc|ssc|"
                         r"board exams?|one shot|chapter\s*\d+|lecture\s*\d+|ch[\s.-]*\d+|for kids|exam|syllabus|"
-                        r"revision|gcse|a[ -]level|ap (physics|chemistry|biology)|mcqs?|pyqs?)\b", re.I)
+                        r"revision|gcse|a[ -]level|ap (physics|chemistry|biology)|mcqs?|pyqs?|maths|worksheet|homework|"
+                        r"speed,? distance and time|class notes|tuition|cbse|igcse)\b", re.I)
 CLICKBAIT = re.compile(r"(!!+|\?\?+|\b(shocking|insane|you won'?t believe|gone wrong|destroy(s|ed)|exposed|"
                        r"mind[- ]?blow\w*|secret they|nobody tells|will blow|must see|omg|wtf)\b|[🌀-🫿])", re.I)
 

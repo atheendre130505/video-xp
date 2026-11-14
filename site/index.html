@@ -33,7 +33,7 @@
   #asklabel { position:fixed; right:96px; top:50%; transform:translateY(-50%); z-index:3; display:none; padding:8px 12px; border-radius:12px;
               background:rgba(10,10,12,.8); font-weight:600; font-size:14px; pointer-events:none; text-align:right; }
   #rail.asking ~ #asklabel { display:block; }
-  @media (pointer: coarse) { #rail.asking ~ #asklabel { display:none; } }   /* phones: the pulsing buttons alone */
+  body.phone #rail.asking ~ #asklabel { display:none; }   /* phones: the pulsing buttons alone */
   body.ad #player, body.ad #player iframe { top:0; height:100dvh; }
   body.ad #layer { pointer-events:none; }
   #adpill { position:fixed; left:16px; top:16px; z-index:7; display:none; padding:8px 14px; border-radius:999px; font-weight:700;
@@ -54,7 +54,10 @@
   .btn { font:inherit; font-weight:600; border:0; border-radius:10px; padding:10px 16px; cursor:pointer; background:#2a2d33; color:#eee; }
   .btn.pri { background:var(--acc); color:#111; }
   label { display:block; font-size:13px; color:var(--dim); margin:12px 0 4px; }
-  @media (pointer: coarse) { #rail { right:12px; gap:11px; } #rail button { width:54px; height:54px; font-size:23px; } }
+  #rail .zoom { display:none; font-size:22px; }
+  #player { transition:transform .2s; transform-origin:50% 50%; }
+  body.phone #rail .zoom { display:block; }
+  body.phone #rail { right:12px; gap:11px; } body.phone #rail button { width:54px; height:54px; font-size:23px; }
 </style>
 </head>
 <body>
@@ -66,6 +69,8 @@
   <button class="bad" id="bad" title="Not good (B)">👎</button>
   <button class="txt" id="cc" title="Captions (C)">CC</button>
   <button class="txt" id="speed" title="Speed: ] faster, [ slower">1×</button>
+  <button class="txt zoom" id="zin" title="Zoom in">＋</button>
+  <button class="txt zoom" id="zout" title="Zoom out">－</button>
 </div>
 <div id="asklabel">Good recommendation?<br>tap 👍 or 👎</div>
 <div id="adpill">Ad · use YouTube’s “Skip” button in the video</div>
@@ -79,6 +84,9 @@ const $ = s => document.querySelector(s);
 const LS = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
              set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 const now = () => Date.now() / 1000;
+// phone vs laptop by what the browser says it is (touch-screen laptops have touch too, so touch is not a test)
+const IS_PHONE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+document.body.classList.toggle("phone", IS_PHONE);
 
 // ---------------- data ----------------
 const D = { rows: [], vec: null, dim: 128, byId: new Map(), generated: 0 };
@@ -174,22 +182,23 @@ function seek(d) {
 }
 function back() { if (!S.played.length) return; saveProgress(true); if (S.cur) S.queue.unshift(S.cur); play(S.played.pop()); }
 
-function play(v, at = 0) {
+function play(v, at = 0, paused = false) {
   S.cur = v; S.watched = 0; S.secs = 0; S.fast = 0; S.skips = 0; S.ended = false; hideAsk(); loadSegments(v.id); document.body.classList.remove("ad");
   const r = ratings[v.id];
   $("#good").classList.toggle("on", !!r && r.w > 0); $("#bad").classList.toggle("on", !!r && r.w < 0);
   document.title = v.title || "Video XP";
   const go = () => {
-    if (player && player.loadVideoById) { player.loadVideoById({ videoId: v.id, startSeconds: at }); return; }
+    if (player && player.loadVideoById) { player[paused ? "cueVideoById" : "loadVideoById"]({ videoId: v.id, startSeconds: at }); return; }
     player = new YT.Player("player", { videoId: v.id, host: "https://www.youtube-nocookie.com",
-      playerVars: { autoplay: 1, mute: 1, controls: 0, disablekb: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, fs: 0,
+      playerVars: { autoplay: paused ? 0 : 1, mute: 1, controls: 0, disablekb: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, fs: 0,
                     start: Math.floor(at), cc_load_policy: pref.cc ? 1 : 0, cc_lang_pref: "en" },
       events: {
-        onReady: () => { if (S.activated) player.unMute(); },
+        onReady: () => { if (S.activated) player.unMute(); if (pref.zoom > 1) setZoom(pref.zoom); },
         onStateChange: e => {
           if (e.data === YT.PlayerState.ENDED) { S.ended = true; if (S.cur && !ratings[S.cur.id]) ask(); }   // never auto-advances
           if (e.data === YT.PlayerState.PLAYING && S.applied !== S.cur?.id) { S.applied = S.cur?.id; applyPrefs(); }
-          if (e.data === YT.PlayerState.PAUSED) saveProgress();
+          if (e.data === YT.PlayerState.PAUSED) { saveProgress(); if (!following) announceSoon("paused"); }
+          if (e.data === YT.PlayerState.PLAYING && !adPlaying()) { following = false; announceSoon("playing"); }
         },
         onError: () => { if (S.cur) { seen.add(S.cur.id); LS.set("seen", [...seen].slice(-8000)); } S.cur = null; advance(); } } });
   };
@@ -233,7 +242,8 @@ setInterval(() => {
   document.body.classList.toggle("ad", ad);
   if (ad) return;                                       // ad time is not watch time
   if (player && player.getPlayerState && player.getPlayerState() === 1) { skipSponsor(); const rate = player.getPlaybackRate() || 1; S.secs += 1; S.watched += rate; if (rate >= 1.75) S.fast += 1;
-    if (S.secs === 3) saveProgress(true); else if (S.secs % 15 === 0) saveProgress(); }
+    if (S.secs % 15 === 0) saveProgress();
+    if (S.secs % 180 === 0) announce("playing"); }
 }, 1000);
 
 // ---------------- reactions + progress: stored here, synced to the cloud ----------------
@@ -272,12 +282,12 @@ function saveProgress(final = false) {
 // device can pick up from here. Coming back: carry on, but only if it was us who paused it.
 let autoPaused = false;
 function away() {
-  if (player && player.getPlayerState && player.getPlayerState() === 1) { player.pauseVideo(); autoPaused = true; }
-  saveProgress(); sync(true);
+  if (player && player.getPlayerState && player.getPlayerState() === 1) { following = true; player.pauseVideo(); autoPaused = true; }
+  saveProgress(); announce("paused", true);
 }
 function returned() {
   const resumeHere = autoPaused; autoPaused = false;
-  pull().then(switched => { if (!switched && resumeHere && player && player.playVideo) player.playVideo(); });
+  pull().then(switched => { if (!switched && resumeHere && !following && player && player.playVideo) player.playVideo(); });
 }
 document.addEventListener("visibilitychange", () => { document.visibilityState === "hidden" ? away() : returned(); });
 // switching to another window on a PC doesn't hide the tab, so also watch focus. Clicking inside the video itself
@@ -319,10 +329,81 @@ function applyEvent(e, remote) {
 }
 function saveAll() { LS.set("seen", [...seen].slice(-8000)); LS.set("ratings", ratings); LS.set("progress", progress); }
 
-// what happened on your other devices: the cloud's hourly state + the relay's last 12 hours.
-// If another device did something more recent than this one, open what it was watching.
+// ---------------- one video at a time, on all your devices ----------------
+// Each device announces what it is doing ("playing" / "paused", which video, where) and listens live for the
+// others. When another device starts playing, this one pauses and lines up the same video at the same spot.
+// If both try to play at once, the laptop wins. On open / return, you continue from the most recent position
+// on any device.
+const KIND = IS_PHONE ? "phone" : "laptop";
+let following = false;                                 // paused because another device is playing
+let myNow = LS.get("myNow", null);
+function nowInfo(state) {
+  const v = S.cur;
+  return v && { id: v.id, pos: pos(), state, ts: now(), t: v.title, c: v.channel, d: v.dur || dur(), g: v.topic };
+}
+async function announce(state, leaving = false) {
+  const n = nowInfo(state); if (!n) return;
+  myNow = n; LS.set("myNow", n);
+  const q = LS.get("outbox", []).slice(0, 12);          // piggyback pending reactions (relay messages max 4 KB)
+  try {
+    const r = await fetch(RELAY, { method: "POST", keepalive: leaving, body: JSON.stringify({ dev: DEV, kind: KIND, now: n, events: q }) });
+    if (r.ok && q.length) {
+      const sent = new Set(q.map(e => e.id + ":" + e.ts));
+      LS.set("outbox", LS.get("outbox", []).filter(e => !sent.has(e.id + ":" + e.ts)));
+    }
+  } catch (e) { console.warn("announce failed", e); }
+}
+let annT = null, annLast = { key: "", at: 0 };
+function announceSoon(state) {                         // play/pause can flicker (buffering): settle, then send once
+  clearTimeout(annT);
+  annT = setTimeout(() => {
+    const key = state + ":" + (S.cur && S.cur.id);
+    if (key === annLast.key && Date.now() - annLast.at < 30000) return;
+    annLast = { key, at: Date.now() }; announce(state);
+  }, 1200);
+}
+const playingHere = () => !!(player && player.getPlayerState && player.getPlayerState() === 1);
+
+function rowFor(n) {
+  const p = progress[n.id] || {};
+  return D.byId.get(n.id) || { id: n.id, title: n.t || p.t || "", channel: n.c || p.c || "", dur: n.d || p.d, topic: n.g || p.g || "", p: 0, kind: "t" };
+}
+// line up what another device is playing, paused here
+function follow(n) {
+  following = true; autoPaused = false;
+  if (playingHere()) player.pauseVideo();
+  if (S.cur && S.cur.id === n.id) { try { player.seekTo(n.pos, true); player.pauseVideo(); } catch {} }
+  else { if (S.cur && !ratings[S.cur.id]) saveProgress(); if (S.cur) S.played.push(S.cur); S.queue = []; $("#wait").textContent = ""; play(rowFor(n), n.pos, true); fill(); }
+  toast(`Playing on your ${n.kind}`);
+}
+// open a position here and play it (you're using this device now)
+function openHere(n) {
+  following = false;
+  if (S.cur && S.cur.id === n.id) { if (Math.abs(pos() - n.pos) > 10) player.seekTo(n.pos, true); return; }
+  if (S.cur && !ratings[S.cur.id]) saveProgress();
+  if (S.cur) S.played.push(S.cur);
+  S.queue = []; $("#wait").textContent = ""; play(rowFor(n), Math.max(0, n.pos - 2)); S.secs = 3; fill();
+}
+
+function onMessage(b) {
+  if (!b || b.dev === DEV) return;
+  for (const e of b.events || []) applyEvent(e, true);
+  saveAll();
+  const n = b.now && { ...b.now, kind: b.kind || "laptop", dev: b.dev };
+  if (n && n.state === "playing" && !seen.has(n.id)) {
+    if (playingHere() && KIND === "laptop" && n.kind === "phone") { annLast.key = ""; announce("playing"); return; }   // laptop wins
+    follow(n);
+  } else if (S.cur && seen.has(S.cur.id) && !playingHere()) { S.queue = []; advance(); }   // rated on the other device
+}
+function listen() {                                    // live link: messages arrive within a second or two
+  try {
+    const es = new EventSource(`${RELAY}/sse`);
+    es.onmessage = ev => { try { const m = JSON.parse(ev.data); if (m.event === "message") onMessage(JSON.parse(m.message)); } catch {} };
+  } catch (e) { console.warn("live link unavailable", e); }
+}
+
+// on open / return: catch up, then continue from the most recent position on any device (laptop if it's playing)
 async function pull() {
-  let newest = null;
   try {
     const st = await fetch("state.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null);
     if (st) {
@@ -331,6 +412,7 @@ async function pull() {
       for (const pr of st.progress || []) mergeProgress(pr.id, pr);
     }
   } catch (e) { console.warn("state.json", e); }
+  const latest = {};                                   // dev -> newest "now"
   try {
     const txt = await fetch(`${RELAY}/json?poll=1&since=12h`, { cache: "no-store" }).then(r => r.ok ? r.text() : "");
     for (const line of txt.split("\n")) {
@@ -338,27 +420,19 @@ async function pull() {
       let m; try { m = JSON.parse(line); } catch { continue; }
       if (m.event !== "message") continue;
       let b; try { b = JSON.parse(m.message); } catch { continue; }
-      for (const e of b.events || []) {
-        applyEvent(e, b.dev !== DEV);
-        if (b.dev !== DEV && (!newest || e.ts > newest.ts)) newest = e;
-      }
+      for (const e of b.events || []) applyEvent(e, b.dev !== DEV);
+      if (b.now && (!latest[b.dev] || b.now.ts > latest[b.dev].ts)) latest[b.dev] = { ...b.now, kind: b.kind || "laptop", dev: b.dev };
     }
   } catch (e) { console.warn("relay", e); }
   saveAll();
-  if (!newest || newest.ts <= lastLocal) return false;
-  // another device was used more recently than this one
-  if (newest.liked == null && !newest.soft && !seen.has(newest.id)) {
-    if (S.cur && S.cur.id === newest.id) { if (Math.abs(pos() - newest.pos) > 15) player.seekTo(newest.pos, true); return true; }
-    const p = progress[newest.id] || {};
-    const row = D.byId.get(newest.id) || { id: newest.id, title: newest.t || p.t || "", channel: newest.c || p.c || "", dur: newest.duration || p.d, topic: newest.g || "", p: 0, kind: "t" };
-    if (S.cur && !ratings[S.cur.id]) saveProgress();
-    if (S.cur) S.played.push(S.cur);
-    $("#wait").textContent = ""; play(row, Math.max(0, newest.pos - 3)); S.secs = 3; touch_(); fill();
-    toast("Continuing from your other device");
-    return true;
-  }
-  if (S.cur && seen.has(S.cur.id)) { S.queue = []; advance(); return true; }   // you rated this one elsewhere
-  return false;
+  if (myNow && (!latest[DEV] || myNow.ts > latest[DEV].ts)) latest[DEV] = { ...myNow, kind: KIND, dev: DEV };
+  const all = Object.values(latest).filter(n => n.id && !seen.has(n.id));
+  const live = all.filter(n => n.dev !== DEV && n.state === "playing" && now() - n.ts < 200);
+  const liveLaptop = live.find(n => n.kind === "laptop");
+  if (liveLaptop && KIND === "phone") { follow(liveLaptop); return true; }      // laptop is playing: phone waits
+  const newest = all.sort((a, b) => b.ts - a.ts)[0];
+  if (!newest) { if (S.cur && seen.has(S.cur.id)) { S.queue = []; advance(); return true; } return false; }
+  openHere(newest); return true;
 }
 function mergeProgress(id, p) {
   if (seen.has(id) || ratings[id] || !p.pos) return;
@@ -378,6 +452,11 @@ function changeSpeed(dir) {
   pref.speed = SPEEDS[dir === 0 ? (i + 1) % SPEEDS.length : Math.min(SPEEDS.length - 1, Math.max(0, (i < 0 ? 1 : i) + dir))];
   LS.set("pref", pref); if (player && player.setPlaybackRate) player.setPlaybackRate(pref.speed); renderPrefs(); toast(pref.speed + "×");
 }
+function setZoom(z) {
+  pref.zoom = Math.min(3, Math.max(1, Math.round(z * 4) / 4)); LS.set("pref", pref);
+  const el = document.getElementById("player"); if (el) el.style.transform = pref.zoom === 1 ? "" : `scale(${pref.zoom})`;
+  toast(pref.zoom === 1 ? "Zoom: fit" : `Zoom ${pref.zoom}×`);
+}
 function renderPrefs() { $("#cc").classList.toggle("on", pref.cc); $("#speed").textContent = pref.speed + "×"; $("#speed").classList.toggle("on", pref.speed !== 1); }
 let toastT; function toast(m) { $("#toast").textContent = m; $("#toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("#toast").classList.remove("show"), 1400); }
 
@@ -389,7 +468,7 @@ function activate() {
   if (player && player.unMute) player.unMute();
   const el = document.documentElement, fs = el.requestFullscreen || el.webkitRequestFullscreen;
   if (fs && !document.fullscreenElement) Promise.resolve(fs.call(el)).then(() => {
-    if (matchMedia("(pointer: coarse)").matches && screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(() => {});
+    if (IS_PHONE && screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(() => {});
   }).catch(() => {});
 }
 function toggleFullscreen() {
@@ -417,7 +496,7 @@ document.addEventListener("keydown", e => {
 let tapT = null;
 $("#layer").addEventListener("click", e => {
   const first = !S.activated; activate();
-  if (matchMedia("(pointer: coarse)").matches) showControls(4000);
+  if (IS_PHONE) showControls(4000);
   if (first) return;
   if (tapT) { clearTimeout(tapT); tapT = null; seek(e.clientX > innerWidth / 2 ? 5 : -5); return; }
   tapT = setTimeout(() => { tapT = null; if (!S.ended) togglePause(); }, 260);
@@ -434,6 +513,7 @@ $("#layer").addEventListener("touchend", e => {
 $("#good").onclick = () => react(1);
 $("#bad").onclick = () => react(-1);
 $("#cc").onclick = toggleCaptions; $("#speed").onclick = () => changeSpeed(0);
+$("#zin").onclick = () => setZoom((pref.zoom || 1) + 0.25); $("#zout").onclick = () => setZoom((pref.zoom || 1) - 0.25);
 
 let idle;
 function showControls(ms = 2200) {
@@ -446,9 +526,11 @@ document.addEventListener("touchstart", e => { if (e.target.closest(".ctl")) sho
 // ---------------- start ----------------
 if (location.hash) history.replaceState(null, "", location.pathname);    // old setup links: nothing to set up any more
 renderPrefs();
+if (!pref.zoom) pref.zoom = 1;
 load().then(async () => {
-  const switched = await Promise.race([pull(), new Promise(r => setTimeout(() => r(false), 3000))]);
-  if (switched) return;
+  listen();
+  const switched = await Promise.race([pull(), new Promise(r => setTimeout(() => r(false), 4000))]);
+  if (switched) { sync(); return; }
   // pick up where you left off on this device (or the most recent unfinished video anywhere)
   const resume = Object.entries(progress).filter(([id, p]) => !seen.has(id) && !ratings[id] && !p.soft).sort((a, b) => b[1].ts - a[1].ts)[0];
   if (resume && resume[1].t) {

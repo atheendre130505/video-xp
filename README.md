@@ -15,6 +15,7 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 | skip 5 s ahead / back | → / ←, or double-click right / left | double-tap right / left |
 | captions, speed | C, [ ] | tap → CC, 1× |
 | full screen | F | (automatic on first tap) |
+| zoom in / out | | tap → ＋ / － |
 
 - A video never advances on its own, and next always asks for your reaction first.
 - **Rushing** (watching at about 2x, or skipping ahead 3+ times) is a signal: a rushed "good" counts less,
@@ -45,9 +46,10 @@ Not used: watch time as a goal, your old YouTube history (only to avoid repeats)
 (they need per-video requests that YouTube blocks from cloud servers).
 
 ## Devices stay in step (no setup)
-Every device posts what you do (watched to X seconds / good / not good, by video id) to a shared relay
-(ntfy.sh) and reads it back when it opens or when you return to it, so phone and laptop continue the same
-video. The cloud reads the relay hourly, retrains, and publishes `state.json` (every video you rated, your
+Every device announces what it is doing (playing / paused, which video, where) to a shared relay (ntfy.sh)
+and listens live for the others. Only one video plays at a time: when another device starts, this one pauses
+and lines up the same video at the same spot. If both try to play at once, the laptop wins. Opening the app on
+either device continues from the most recent position. The cloud reads the relay hourly, retrains, and publishes `state.json` (every video you rated, your
 taste vector, unfinished videos).
 
 ## Privacy
