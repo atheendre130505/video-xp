@@ -52,7 +52,6 @@ jobs:
         name: Pipeline (events -> crawl -> train -> feed)
         env:
           VXP_PASSPHRASE: ${{ secrets.VXP_PASSPHRASE }}
-          YT_API_KEY: ${{ secrets.YT_API_KEY }}
           HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
         run: python code/pipeline.py --data data --site site ${{ github.event_name == 'repository_dispatch' && '--quick' || '' }}
       - if: steps.ready.outputs.ok == 'true'

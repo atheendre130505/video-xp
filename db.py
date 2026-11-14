@@ -91,10 +91,12 @@ def x(sql, args=()):
 def add_candidates(topic, entries, source):
     with conn() as c:
         for e in entries:
-            c.execute("""INSERT OR IGNORE INTO videos (id, topic, title, channel, duration, views, added_at, source)
-                         VALUES (?,?,?,?,?,?,?,?)""",
-                      (e["id"], topic, e.get("title"), e.get("channel"), e.get("duration"), e.get("view_count"),
-                       time.time(), source))
+            c.execute("""INSERT OR IGNORE INTO videos (id, topic, title, channel, channel_url, duration, views,
+                         added_at, source) VALUES (?,?,?,?,?,?,?,?,?)""",
+                      (e["id"], topic, e.get("title"), e.get("channel"), e.get("channel_url"), e.get("duration"),
+                       e.get("view_count"), time.time(), source))
+            if e.get("view_count"):          # keep view counts fresh on re-listing
+                c.execute("UPDATE videos SET views=? WHERE id=?", (e["view_count"], e["id"]))
 
 
 def claim():

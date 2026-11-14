@@ -1,11 +1,9 @@
 # Video XP
 
-A reels-style YouTube feed: it plays, you keep watching or swipe on, and a small neural network learns
+A reels-style YouTube feed: it plays, you keep watching or move on, and a small neural network learns
 what you'll keep watching. No choosing, no playlists.
 
-- **Phone / anywhere:** GitHub Pages app, fed by GitHub Actions (crawl → retrain → publish every 6 h, and
-  shortly after your phone uploads watch data).
-- **On the PC:** `start.bat` runs the same idea locally (Flask) with live retraining after every video.
+**Open it:** https://atheendre130505.github.io/video-xp/ (phone or PC; `start.bat` / `Video XP.url` open the same page)
 
 ## Controls
 | | Desktop | Phone |
@@ -17,23 +15,22 @@ what you'll keep watching. No choosing, no playlists.
 | back to your feed | ✕ on the pill · Esc | ✕ on the pill |
 
 ## How it works
-1. **Candidates:** every video of the channels in `subscriptions.txt` + rotating searches across 16 categories
-   (philosophy, history, humanities, art, physics, chemistry, biology, math, finance, economics, …) + more of
-   whatever you keep watching. School/exam videos are filtered out.
-2. **Features** (SQLite): title+channel embedding (MiniLM), length, views, likes, like ratio, comments, age,
-   your affinity to the channel, whether you're subscribed, similarity to what you kept watching / skipped.
-3. **Model:** MLP predicting how much of a video you'll watch (👍/👎 count double); history import = weak signal.
-4. **Phone:** downloads the ranked feed + a compact catalog, re-ranks as you swipe, and syncs encrypted watch data back.
+GitHub Actions runs every 6 hours (and shortly after a device uploads watch data):
+1. **Candidates** (yt-dlp page listings, no API key): every video of the channels in `subscriptions.txt`,
+   rotating searches across 16 categories, and more of whatever you keep watching. School/exam videos are dropped.
+2. **Features** (SQLite): title+channel embedding (MiniLM), length, views, your affinity to the channel,
+   whether you're subscribed, similarity to what you kept watching / skipped.
+3. **Model:** an MLP predicting how much of a video you'll watch (👍/👎 count double).
+4. **Publish:** the ranked feed + a compact catalog go to GitHub Pages. The app re-ranks as you watch and
+   syncs encrypted watch data back.
 
 ## Privacy
-This repo is public. Your database, imported history and watch data exist here **only encrypted**
-(AES-256-GCM, passphrase in GitHub Secrets and on your phone) on the `data` branch. The published site
-contains the recommended-video catalog, not your history. `subscriptions.txt` is public; delete lines you'd rather not show.
+This repo is public. The database, imported history and watch data exist here **only encrypted**
+(AES-256-GCM) on the `data` branch. The published site holds the video catalog, not your history.
+`subscriptions.txt` is public; delete lines you'd rather not show.
 
-## Setup (once)
-1. **YouTube Data API key** (free): console.cloud.google.com → new project → *APIs & Services* → enable
-   **YouTube Data API v3** → *Credentials* → *Create credentials* → **API key**.
-2. On the PC: `.venv\Scripts\python cloud_setup.py` (asks for a passphrase + the key, uploads your encrypted data,
-   starts the first run).
-3. On the phone: open **https://atheendre130505.github.io/video-xp/** → tap → ⚙ → enter the passphrase and a
-   fine-grained GitHub token (this repo only, *Contents: Read and write*).
+## Syncing a device (optional, once per device)
+Without this the app still works and adapts on the device; with it the cloud model learns from that device.
+1. Open the `SETUP_LINK` from your local `cloud.env` on the device (stores the passphrase there).
+2. In the app: ⚙ → paste a fine-grained GitHub token (this repo only, *Contents: Read and write*),
+   made at https://github.com/settings/personal-access-tokens/new

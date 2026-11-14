@@ -84,7 +84,7 @@
 
 <div class="sheet" id="chanSheet"><div class="box">
   <div class="row"><h3 id="chanName" style="margin:0;flex:1"></h3><button class="btn pri" id="chanPlay">▶ Play</button><button class="btn" id="chanClose">✕</button></div>
-  <div class="tabs"><button class="btn on" data-s="best">Best for you</button><button class="btn" data-s="new">Newest</button><button class="btn" data-s="pop">Most viewed</button></div>
+  <div class="tabs"><button class="btn on" data-s="best">Best for you</button><button class="btn" data-s="pop">Most viewed</button></div>
   <div class="vids" id="chanVids"></div>
 </div></div>
 
@@ -115,18 +115,32 @@ const session = LS.get("session", { kept: [], skipped: [] });   // catalog ids, 
 let S = { queue: [], played: [], cur: null, watched: 0, liked: null, filling: false, activated: false, applied: null };
 let mode = LS.get("mode", null);                                  // null | {type:"topic", q, ids:[…]} | {type:"channel", name, start}
 
-async function load() {
-  const [cat, bin, feed] = await Promise.all([fetch("catalog.json").then(r => r.json()),
-    fetch("catalog.bin").then(r => r.arrayBuffer()), fetch("feed.json", {cache: "no-cache"}).then(r => r.json())]);
-  const c = Object.fromEntries(cat.cols.map((k, i) => [k, i]));
-  D.dim = cat.dim; D.vec = new Int8Array(bin);
-  D.rows = cat.rows.map((r, i) => ({ i, id: r[c.id], title: r[c.title], channel: r[c.channel], dur: r[c.duration], topic: r[c.topic],
-                                      p: r[c.p], views: r[c.views], date: r[c.date] }));
-  cat.rows.forEach((r, i) => { if (r[c.seen]) seen.add(r[c.id]); });
-  D.rows.forEach(r => D.byId.set(r.id, r));
-  D.feed = feed.feed;
+function install(src, vec, feedIds) {
+  const c = Object.fromEntries(src.cols.map((k, i) => [k, i]));
+  D.dim = src.dim; D.vec = vec;
+  D.rows = src.rows.map((r, i) => ({ i, id: r[c.id], title: r[c.title], channel: r[c.channel], dur: r[c.duration], topic: r[c.topic],
+                                      p: r[c.p], views: r[c.views] }));
+  src.rows.forEach(r => { if (r[c.seen]) seen.add(r[c.id]); });
+  D.byId = new Map(D.rows.map(r => [r.id, r]));
+  D.feed = feedIds ? feedIds.map(id => D.byId.get(id)).filter(Boolean).map(r => r.i) : D.rows.map(r => r.i);
   const n = new Map(); D.rows.forEach(r => n.set(r.channel, (n.get(r.channel) || 0) + 1));
   D.channels = [...n.entries()].map(([name, count]) => ({ name, count, key: norm(name) })).sort((a, b) => b.count - a.count);
+}
+// fast start: the small feed (a few hundred videos) is enough to begin playing
+async function load() {
+  const feed = await fetch("feed.json", { cache: "no-cache" }).then(r => r.json());
+  install(feed, Int8Array.from(atob(feed.vec), ch => ch.charCodeAt(0)), null);
+  D.full = false;
+  loadCatalog(feed.rows.map(r => r[0]));
+}
+// then the whole catalog in the background (needed for topic / channel search)
+async function loadCatalog(feedIds) {
+  try {
+    const [cat, bin] = await Promise.all([fetch("catalog.json").then(r => r.json()), fetch("catalog.bin").then(r => r.arrayBuffer())]);
+    install(cat, new Int8Array(bin), feedIds);
+    D.full = true;
+    if ($("#searchSheet").classList.contains("open")) renderResults();
+  } catch (e) { console.warn("catalog not loaded", e); }
 }
 const norm = s => (s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "");
 
@@ -327,7 +341,8 @@ function renderResults() {
   if (k) D.channels.filter(c => c.key.includes(k)).slice(0, 7).forEach(c => opts.push({ kind: "channel", c }));
   if (!q) D.channels.slice(0, 6).forEach(c => opts.push({ kind: "channel", c }));
   sel = Math.min(sel, Math.max(0, opts.length - 1));
-  $("#results").innerHTML = (q ? "" : `<div class="hint">Type a topic (only those videos will play) or a channel name. Your top channels:</div>`) +
+  $("#results").innerHTML = (D.full ? "" : `<div class="hint">Loading the full catalogue… results fill in after a few seconds.</div>`) +
+    (q ? "" : `<div class="hint">Type a topic (only those videos will play) or a channel name. Your top channels:</div>`) +
     opts.map((o, i) => o.kind === "topic"
       ? `<div class="opt ${i === sel ? "sel" : ""}" data-i="${i}"><span class="ic">🎯</span><div>Only “${esc(o.q)}” videos<small>reels of just this topic</small></div><span class="go">Enter</span></div>`
       : `<div class="opt ${i === sel ? "sel" : ""}" data-i="${i}"><span class="ic">📺</span><div>${esc(o.c.name)}<small>${o.c.count} videos</small></div>
@@ -352,7 +367,7 @@ let chanSort = "best", chanNameOpen = "";
 function openChannel(name) { chanNameOpen = name; openSheet("#chanSheet"); $("#chanName").textContent = name; renderChannel(); }
 function renderChannel() {
   const vids = D.rows.filter(r => r.channel === chanNameOpen);
-  const by = { best: (a, b) => b.p - a.p, new: (a, b) => String(b.date).localeCompare(String(a.date)), pop: (a, b) => (b.views || 0) - (a.views || 0) }[chanSort];
+  const by = { best: (a, b) => b.p - a.p, pop: (a, b) => (b.views || 0) - (a.views || 0) }[chanSort];
   vids.sort(by);
   document.querySelectorAll("#chanSheet .tabs .btn").forEach(b => b.classList.toggle("on", b.dataset.s === chanSort));
   $("#chanVids").innerHTML = vids.slice(0, 300).map(v => `<div class="vid ${seen.has(v.id) ? "seen" : ""}" data-id="${v.id}">
@@ -431,6 +446,12 @@ document.addEventListener("mousemove", e => { if (!e.sourceCapabilities || !e.so
 document.addEventListener("touchstart", e => { if (e.target.closest(".ctl")) showControls(4000); }, { passive: true });
 
 // ---------------- start ----------------
+// setup link: …/video-xp/#p=<passphrase> stores the passphrase on this device (the part after # never leaves the browser)
+if (location.hash.startsWith("#p=")) {
+  const c = cfg(); c.pass = decodeURIComponent(location.hash.slice(3)); LS.set("cfg", c);
+  history.replaceState(null, "", location.pathname);
+  setTimeout(() => { toast("Passphrase saved. Add a GitHub token in ⚙ to sync."); }, 1500);
+}
 renderPrefs();
 load().then(() => {
   if (mode && mode.type === "topic" && !mode.ids) mode = null;

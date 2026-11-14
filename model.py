@@ -11,7 +11,7 @@ Target    engagement in 0..1 = watched / min(half the video, 4 min), capped at 1
 Data      every video you were shown (weight 1, 👍/👎 2) + Takeout history as weak positives (0.1)
           + random unwatched candidates as weak negatives (fade out as real data grows)
 Network   MLP 400 -> 256 -> 64 -> 1 (ReLU, dropout), BCE on soft targets, Adam. Retrains in a few seconds
-          after new watch data; every candidate's prediction is written to videos.p_watch.
+          ; every candidate's prediction is written to videos.p_watch.
 """
 import math, random, threading, time, logging
 from collections import defaultdict
@@ -21,14 +21,10 @@ import db
 log = logging.getLogger("model")
 EMB_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 EMB_DIM = 384
-TOP_LOOKUPS = 40            # after each scoring pass: full lookup for this many top un-looked-up candidates
-EXPLORE_LOOKUPS = 10        # plus a few random ones, so exploration has material
 HISTORY_CAP = 3000
 HISTORY_WEIGHT = 0.1        # Takeout history only nudges taste; what you keep watching here counts 10x more
-PER_CATEGORY_LOOKUPS = 4    # every category keeps a few playable videos ready, so the feed can stay mixed
 
 _st, _st_lock = None, threading.Lock()
-_net, _net_lock = None, threading.Lock()
 status = {"trained_on": 0, "last_train": None, "candidates": 0}
 
 
@@ -169,9 +165,8 @@ def _build():
                          nn.Linear(256, 64), nn.ReLU(), nn.Dropout(0.1), nn.Linear(64, 1))
 
 
-def train_and_score(request_lookups=True):
-    """Retrain on everything known, then write p_watch for every candidate (and, locally, request lookups for the
-    top ones; the cloud pipeline looks everything up anyway, so it passes request_lookups=False)."""
+def train_and_score():
+    """Retrain on everything known, then write p_watch for every unseen candidate."""
     import torch
     t0 = time.time()
     cand = db.q("""SELECT id, topic, title, channel, duration, views, likes, comment_count, upload_date, enriched
@@ -234,48 +229,7 @@ def train_and_score(request_lookups=True):
     with db.conn() as c:
         c.executemany("UPDATE videos SET p_watch=?, scored_at=? WHERE id=?",
                       [(float(pi), now, r["id"]) for r, pi in zip(unseen, p)])
-    global _net
-    with _net_lock:
-        _net = net
-    # stage 2: full lookup only for the best candidates (+ a few random ones to explore)
-    order = np.argsort(-p)
-    top = [unseen[i]["id"] for i in order if unseen[i]["enriched"] == 0][:TOP_LOOKUPS]
-    per_cat = defaultdict(list)
-    for i in order:
-        r = unseen[i]
-        if r["enriched"] == 0 and len(per_cat[r["topic"]]) < PER_CATEGORY_LOOKUPS:
-            per_cat[r["topic"]].append(r["id"])
-    top += [v for ids in per_cat.values() for v in ids if v not in top]
-    rest = [r["id"] for r in unseen if r["enriched"] == 0 and r["id"] not in top]
-    if request_lookups:
-        import fetcher
-        fetcher.request_lookups(top + random.sample(rest, min(EXPLORE_LOOKUPS, len(rest))))
     status.update(trained_on=n_real, history=len(hist), candidates=len(unseen),
                   last_train=round(time.time() - t0, 1))
     log.info("trained on %d watched + %d history, scored %d candidates in %.1fs",
              n_real, len(hist), len(unseen), time.time() - t0)
-
-
-# ---------------- background trainer ----------------
-_dirty = threading.Event()
-
-
-def mark_dirty():
-    _dirty.set()
-
-
-def start_trainer(min_gap=20, every=300):
-    """Retrain soon after new watch data (and every few minutes as the pool grows)."""
-    def loop():
-        last = 0
-        while True:
-            _dirty.wait(every)
-            _dirty.clear()
-            time.sleep(max(0, min_gap - (time.time() - last)))
-            try:
-                train_and_score()
-            except Exception as ex:
-                log.exception("training failed: %s", ex)
-            last = time.time()
-    _dirty.set()
-    threading.Thread(target=loop, daemon=True).start()

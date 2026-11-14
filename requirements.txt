@@ -1,5 +1,0 @@
-flask>=3.0
-yt-dlp>=2026.10.26
-numpy
-torch                    # CPU build: pip install torch --index-url https://download.pytorch.org/whl/cpu
-sentence-transformers
