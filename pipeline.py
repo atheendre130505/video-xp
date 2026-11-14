@@ -196,9 +196,11 @@ def export_site(site, pw):
             if by_topic[t] and n_m < POOL_MUST:
                 chosen[by_topic[t].pop(0)] = "m"; n_m += 1
 
-    # X: explore — channels you have never been shown, decent reach, calm titles, at most 2 per channel
+    # X: explore — channels new to you (found via topic searches), decent reach, calm titles, at most 2 per channel
     rng = random.Random(int(time.time() // 3600))
+    known = db.subscribed_names() | {r["channel"] for r in rows if r["source"] in ("sub", "essential")}
     pool = [i for i in idx if i not in chosen and rows[i]["channel"] not in shown_channels
+            and rows[i]["channel"] not in known           # new to you: not subscribed, not on the essentials list
             and (rows[i]["views"] or 0) >= 20000 and not fetcher.clickbait(rows[i]["title"])
             and not fetcher.filler(rows[i])]
     rng.shuffle(pool)
