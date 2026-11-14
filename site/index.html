@@ -26,14 +26,6 @@
   #rail button.txt { font:700 15px system-ui, sans-serif; }
   #rail button.on { background:#eee; color:#111; }
   #rail button.on.good { background:var(--good); } #rail button.on.bad { background:var(--bad); }
-  /* "good or not good?" — asked on the side buttons themselves, never over the middle of the video */
-  #rail.asking .good { background:var(--good); animation:pulse 1.4s infinite; }
-  #rail.asking .bad { background:var(--bad); animation:pulse 1.4s infinite .7s; }
-  @keyframes pulse { 50% { transform:scale(1.12); } }
-  #asklabel { position:fixed; right:96px; top:50%; transform:translateY(-50%); z-index:3; display:none; padding:8px 12px; border-radius:12px;
-              background:rgba(10,10,12,.8); font-weight:600; font-size:14px; pointer-events:none; text-align:right; }
-  #rail.asking ~ #asklabel { display:block; }
-  body.phone #rail.asking ~ #asklabel { display:none; }   /* phones: the pulsing buttons alone */
   body.ad #player, body.ad #player iframe { top:0; height:100dvh; }
   body.ad #layer { pointer-events:none; }
   #adpill { position:fixed; left:16px; top:16px; z-index:7; display:none; padding:8px 14px; border-radius:999px; font-weight:700;
@@ -69,7 +61,6 @@
   <button class="txt" id="speed" title="Speed: ] faster, [ slower">1×</button>
   <button class="txt" id="fs" title="Full screen (F)">⛶</button>
 </div>
-<div id="asklabel">Good recommendation?<br>tap 👍 or 👎</div>
 <div id="adpill">Ad · use YouTube’s “Skip” button in the video</div>
 <div id="toast"></div>
 
@@ -166,7 +157,7 @@ function advance() {
   if (!v) { $("#wait").textContent = "That’s everything for now. New videos arrive with the next cloud run."; return; }
   $("#wait").textContent = ""; play(v); fill();
 }
-// ↓ / swipe up: you must react first, always.
+// ↓ / swipe up: moves on only once you've rated this video; otherwise just shows the buttons.
 function next() {
   if (!S.cur) return advance();
   if (ratings[S.cur.id] || seen.has(S.cur.id)) return advance();      // went back to something already rated
@@ -194,7 +185,7 @@ function play(v, at = 0, paused = false) {
       events: {
         onReady: () => { if (S.activated) player.unMute(); },
         onStateChange: e => {
-          if (e.data === YT.PlayerState.ENDED) { S.ended = true; if (S.cur && !ratings[S.cur.id]) ask(); }   // never auto-advances
+          if (e.data === YT.PlayerState.ENDED) S.ended = true;          // never auto-advances: waits for 👍 / 👎
           if (e.data === YT.PlayerState.PLAYING && S.applied !== S.cur?.id) { S.applied = S.cur?.id; applyPrefs(); }
           if (e.data === YT.PlayerState.PAUSED) { saveProgress(); if (!following) announceSoon("paused"); }
           if (e.data === YT.PlayerState.PLAYING && !adPlaying()) { following = false; announceSoon("playing"); hideSoon(2500); }
@@ -294,8 +285,8 @@ document.addEventListener("visibilitychange", () => { document.visibilityState =
 window.addEventListener("blur", () => setTimeout(() => { if (!document.hasFocus() && document.activeElement?.tagName !== "IFRAME") away(); }, 0));
 window.addEventListener("focus", returned);
 
-function ask() { $("#rail").classList.add("asking"); showControls(600000); }
-function hideAsk() { const was = $("#rail").classList.contains("asking"); $("#rail").classList.remove("asking"); if (was) hideSoon(1200); }
+function ask() { showControls(); }                     // no prompt: the buttons appear as for a tap, then fade
+function hideAsk() {}
 
 // ---------------- sync: one shared relay, no setup ----------------
 // Every device posts what you did (by video id) to the relay and reads it back. The cloud reads it every hour,
@@ -530,11 +521,11 @@ let idle;
 function hideSoon(ms) {
   if (!$("#rail").classList.contains("show")) return;
   clearTimeout(idle);
-  idle = setTimeout(() => { if ($("#rail").classList.contains("asking")) return; $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
+  idle = setTimeout(() => { $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
 }
 function showControls(ms = 2200) {
   $("#rail").classList.add("show"); $("#layer").classList.add("awake");
-  clearTimeout(idle); idle = setTimeout(() => { if ($("#rail").classList.contains("asking")) return; $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
+  clearTimeout(idle); idle = setTimeout(() => { $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
 }
 document.addEventListener("mousemove", e => { if (!e.sourceCapabilities || !e.sourceCapabilities.firesTouchEvents) showControls(); });
 document.addEventListener("touchstart", e => { if (e.target.closest(".ctl")) showControls(4000); }, { passive: true });

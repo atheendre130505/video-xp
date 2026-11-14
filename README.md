@@ -16,7 +16,8 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 | captions, speed | C, [ ] | tap → CC, 1× |
 | full screen on / off | F | tap → ⛶ |
 
-- A video never advances on its own, and next always asks for your reaction first.
+- Nothing asks you to rate. The buttons stay hidden until you tap (phone) or move the mouse (laptop).
+- When a video ends it waits: the next one starts only after you tap 👍 or 👎.
 - **Rushing** (watching at about 2x, or skipping ahead 3+ times) is a signal: a rushed "good" counts less,
   and a rushed video you leave without reacting counts as a soft "not good".
 - Anything you reacted to is never shown again (it stays in the database for learning).
