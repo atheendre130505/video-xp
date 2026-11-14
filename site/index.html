@@ -197,7 +197,7 @@ function play(v, at = 0, paused = false) {
           if (e.data === YT.PlayerState.ENDED) { S.ended = true; if (S.cur && !ratings[S.cur.id]) ask(); }   // never auto-advances
           if (e.data === YT.PlayerState.PLAYING && S.applied !== S.cur?.id) { S.applied = S.cur?.id; applyPrefs(); }
           if (e.data === YT.PlayerState.PAUSED) { saveProgress(); if (!following) announceSoon("paused"); }
-          if (e.data === YT.PlayerState.PLAYING && !adPlaying()) { following = false; announceSoon("playing"); }
+          if (e.data === YT.PlayerState.PLAYING && !adPlaying()) { following = false; announceSoon("playing"); hideSoon(2500); }
         },
         onError: () => { if (S.cur) { seen.add(S.cur.id); LS.set("seen", [...seen].slice(-8000)); } S.cur = null; advance(); } } });
   };
@@ -295,7 +295,7 @@ window.addEventListener("blur", () => setTimeout(() => { if (!document.hasFocus(
 window.addEventListener("focus", returned);
 
 function ask() { $("#rail").classList.add("asking"); showControls(600000); }
-function hideAsk() { $("#rail").classList.remove("asking"); }
+function hideAsk() { const was = $("#rail").classList.contains("asking"); $("#rail").classList.remove("asking"); if (was) hideSoon(1200); }
 
 // ---------------- sync: one shared relay, no setup ----------------
 // Every device posts what you did (by video id) to the relay and reads it back. The cloud reads it every hour,
@@ -526,6 +526,12 @@ function renderFs() { $("#fs").classList.toggle("on", isFull()); $("#fs").title 
 document.addEventListener("fullscreenchange", renderFs); document.addEventListener("webkitfullscreenchange", renderFs);
 
 let idle;
+// hide the side buttons after `ms` (unless a rating is being asked for); doesn't show them
+function hideSoon(ms) {
+  if (!$("#rail").classList.contains("show")) return;
+  clearTimeout(idle);
+  idle = setTimeout(() => { if ($("#rail").classList.contains("asking")) return; $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
+}
 function showControls(ms = 2200) {
   $("#rail").classList.add("show"); $("#layer").classList.add("awake");
   clearTimeout(idle); idle = setTimeout(() => { if ($("#rail").classList.contains("asking")) return; $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
