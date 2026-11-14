@@ -1,5 +1,5 @@
 # Channels you're subscribed to: their videos go into the pool, and "subscribed" is a model feature.
-# One per line: @handle or a channel URL. Lines starting with # are ignored. Edit any time (picked up on restart).
+# One per line: @handle or a channel URL; add "| Topic" to file all its videos under that topic. Lines starting with # are ignored. Edit any time (picked up on restart).
 @business                      # Bloomberg Originals
 @EconomicsExplained
 @kurzgesagt
@@ -29,26 +29,26 @@
 @eoglobal
 @econplusdal
 @frontline
-@SeeKen
+@SeeKen | Personal Growth
 @billgates
 @marvel
 @UNFILTEREDbySamdish
 @foundersfundmafia
-@SandeepSeminars
+@SandeepSeminars | Personal Growth
 @_foundersfund
-@WhatIveLearned
+@WhatIveLearned | Personal Growth
 @facebookapp
 @QuantaScienceChannel
-@PracticalPsychologyTips
+@PracticalPsychologyTips | Personal Growth
 @tecmath
 @Seeker
 @IndianTreasuryofWisdom
 @TopThink
-@FreedominThought
-@ImprovementPill
+@FreedominThought | Personal Growth
+@ImprovementPill | Personal Growth
 @HowtoStartaStartupIIMAhmedabad
 @thecooperacademy
-@BetterThanYesterday
+@BetterThanYesterday | Personal Growth
 @BusinessCasual
 https://www.youtube.com/channel/UCA295QVkf9O1RQ8_-s3FVXg   # Aevy TV ("avey tv")
 @VarunMayya

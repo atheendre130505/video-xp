@@ -24,6 +24,8 @@ CATEGORIES = {   # dict order = the order topics take turns in (alternating very
     "Space": ["space documentary", "black holes explained", "astronomy mysteries", "exoplanets explained"],
     "Literature & Writing": ["literature analysis video essay", "storytelling explained", "great novels explained", "how to write well"],
     "Engineering": ["engineering explained", "how it's made engineering", "megaprojects documentary", "how bridges work"],
+    "Personal Growth": ["how to live a good life", "practical philosophy for everyday life", "emotional intelligence explained",
+                        "how to build good habits", "relationships psychology explained"],
     "Art": ["art history documentary", "famous paintings explained", "sculpture documentary", "how artists see"],
     "Psychology": ["psychology explained", "how the brain works", "cognitive biases explained", "neuroscience documentary"],
     "Chemistry": ["chemistry documentary", "the chemistry of everyday things", "periodic table elements story"],
@@ -132,14 +134,30 @@ def channel_uploads(url, topic, n=15, source="expand"):
                   channel_url=url)
 
 
-def subscriptions():
-    """Channel URLs from subscriptions.txt."""
+def _sub_lines():
+    """(channel URL, pinned topic or None) per line of subscriptions.txt ("@handle" or "@handle | Topic")."""
     out = []
     if SUBSCRIPTIONS_FILE.exists():
         for line in SUBSCRIPTIONS_FILE.read_text(encoding="utf-8").splitlines():
             s = line.split("#", 1)[0].strip()
             if s:
-                out.append(s if s.startswith("http") else f"https://www.youtube.com/{s}")
+                h, _, topic = (x.strip() for x in s.partition("|"))
+                out.append((h if h.startswith("http") else f"https://www.youtube.com/{h}", topic or None))
+    return out
+
+
+def subscriptions():
+    """Channel URLs from subscriptions.txt."""
+    return [u for u, _ in _sub_lines()]
+
+
+def pinned_topics():
+    """channel display name -> topic, for subscriptions pinned with "| Topic" (names learned when crawled)."""
+    out = {}
+    for url, topic in _sub_lines():
+        name = db.kv_get("subname:" + url.rstrip("/")) if topic in CATEGORIES else None
+        if name:
+            out[name] = topic
     return out
 
 

@@ -223,6 +223,11 @@ def export_site(site):
         taste /= np.linalg.norm(taste)
     sim = Z @ taste
 
+    # subscriptions pinned to a topic in subscriptions.txt ("@handle | Personal Growth")
+    pinned = fetcher.pinned_topics()
+    for r in rows:
+        if r["channel"] in pinned:
+            r["topic"] = pinned[r["channel"]]
     # one topic per video: categories as they are; subscription videos (filed under the channel) by meaning
     cats = list(fetcher.CATEGORIES)
     cemb = model.embeddings([("cat:" + c, f"{c}: " + ", ".join(fetcher.CATEGORIES[c])) for c in cats])
