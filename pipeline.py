@@ -26,6 +26,7 @@ POOL_MUST = 160           # essentials: best of the must-watch channels, spread 
 POOL_EXPLORE = 160        # channels you've never been shown
 PER_CHANNEL_TASTE = 8     # so one channel can't fill the taste pool
 PER_TOPIC = 30            # + the best videos of every topic, so the app can rotate through all of them
+SOURCE_ONLY_TOPICS = {"Personal Growth"}
 SERIES_MAX = 15           # episodes shipped per series
 # "Episode 4", "Ep. 4", "Part 2", "Chapter 3", "(3/10)", "3 of 10"
 EPISODE = re.compile(r"\b(?:episode|ep\.?|part|pt\.?|chapter|chap\.?)\s*#?\s*(\d{1,3})\b|"
@@ -241,7 +242,13 @@ def export_site(site):
             m = E[known_i].mean(axis=0)
             v = v / (np.linalg.norm(v) or 1) + 2 * m / (np.linalg.norm(m) or 1)
         Cm.append(v / (np.linalg.norm(v) or 1))
-    best_cat = (E @ np.stack(Cm).T).argmax(axis=1)
+    S_ = E @ np.stack(Cm).T
+    # topics filled only by their own sources (pinned channels, must-watch list, searches), never by meaning:
+    # otherwise general science videos drift into "Personal Growth"
+    for c in SOURCE_ONLY_TOPICS:
+        if c in cats:
+            S_[:, cats.index(c)] = -9
+    best_cat = S_.argmax(axis=1)
     for i, r in enumerate(rows):
         if r["topic"] not in fetcher.CATEGORIES:
             r["topic"] = cats[int(best_cat[i])]
