@@ -14,6 +14,7 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 | pause | click, Space | tap |
 | skip 5 s ahead / back | → / ←, or double-click right / left | double-tap right / left |
 | captions, speed | C, [ ] | tap → CC, 1× |
+| full screen | F | (automatic on first tap) |
 
 - A video never advances on its own, and next always asks for your reaction first.
 - **Rushing** (watching at about 2x, or skipping ahead 3+ times) is a signal: a rushed "good" counts less,
@@ -22,6 +23,7 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 - **Ads:** sponsor reads inside a video are skipped automatically (SponsorBlock data). If YouTube plays its own ad,
   an "Ad" label appears and your tap reaches YouTube's Skip button. Trailers and product promos are kept out of
   the feed. Opening the site in Brave blocks YouTube's own ads altogether.
+- Leave the tab or app and the video pauses; come back and it carries on.
 - Close the app mid-video and it resumes there, on any synced device.
 
 ## What plays

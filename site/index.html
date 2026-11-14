@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
 <title>Video XP</title>
 <style>
   :root { --bg:#000; --good:#3fb950; --bad:#f85149; --panel:rgba(18,18,20,.94); --line:#2b2f35; --dim:#9aa1a9; --acc:#ff6a3d; }
@@ -268,7 +270,22 @@ function saveProgress(final = false) {
   queueEvent({ id: v.id, liked: null, soft, watched: Math.round(S.watched), pos: p, duration: dur(), ts: now() });
   if (final) syncSoon();
 }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { saveProgress(); sync(true); } });
+// leaving (another tab, another app, screen off): pause, remember the position, sync it right away so another
+// device can pick up from here. Coming back: carry on, but only if it was us who paused it.
+let autoPaused = false;
+function away() {
+  if (player && player.getPlayerState && player.getPlayerState() === 1) { player.pauseVideo(); autoPaused = true; }
+  saveProgress(); sync(true);
+}
+function returned() {
+  if (autoPaused && player && player.playVideo && !sheetOpen()) player.playVideo();
+  autoPaused = false;
+}
+document.addEventListener("visibilitychange", () => { document.visibilityState === "hidden" ? away() : returned(); });
+// switching to another window on a PC doesn't hide the tab, so also watch focus. Clicking inside the video itself
+// (YouTube's Skip-ad button) moves focus into the player: that is not leaving.
+window.addEventListener("blur", () => setTimeout(() => { if (!document.hasFocus() && document.activeElement?.tagName !== "IFRAME") away(); }, 0));
+window.addEventListener("focus", returned);
 
 function ask() { $("#ask").classList.add("show"); showControls(60000); }
 function hideAsk() { $("#ask").classList.remove("show"); }
@@ -384,7 +401,12 @@ function activate() {
     if (matchMedia("(pointer: coarse)").matches && screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(() => {});
   }).catch(() => {});
 }
-function togglePause() { if (!player || !player.getPlayerState) return; player.getPlayerState() === 1 ? player.pauseVideo() : player.playVideo(); }
+function toggleFullscreen() {
+  const el = document.documentElement;
+  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+}
+function togglePause() { autoPaused = false; if (!player || !player.getPlayerState) return; player.getPlayerState() === 1 ? player.pauseVideo() : player.playVideo(); }
 document.addEventListener("keydown", e => {
   if (sheetOpen()) { if (e.key === "Escape") $("#setSheet").classList.remove("open"); return; }
   activate();
@@ -397,6 +419,7 @@ document.addEventListener("keydown", e => {
   else if (k === "g" || k === "l") react(1);
   else if (k === "b" || k === "d") react(-1);
   else if (k === "c") toggleCaptions();
+  else if (k === "f") toggleFullscreen();
   else if (k === "]" || k === ">") changeSpeed(1);
   else if (k === "[" || k === "<") changeSpeed(-1);
 });

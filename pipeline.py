@@ -225,7 +225,8 @@ def export_site(site, pw):
                       round(float(rows[i]["p_watch"]), 4), rows[i]["views"], chosen[i]] for i in sel],
             "vec": base64.b64encode(q8(Z[sel]).tobytes()).decode()}
     site.mkdir(parents=True, exist_ok=True)
-    shutil.copy(ROOT / "site" / "index.html", site / "index.html")
+    for name in ("index.html", "icon.png"):
+        shutil.copy(ROOT / "site" / name, site / name)
     (site / "feed.json").write_text(json.dumps(feed, separators=(",", ":")), encoding="utf-8")
 
     # private state for all your devices: taste vector + what you left unfinished (resume point)

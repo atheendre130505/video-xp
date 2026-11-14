@@ -12,3 +12,6 @@ __pycache__/
 site/feed.json
 site/catalog.*
 site/pca.bin
+
+# local shortcut (contains a local path)
+Video XP.url
