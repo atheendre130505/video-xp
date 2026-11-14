@@ -10,234 +10,238 @@
   :root { --bg:#000; --good:#3fb950; --bad:#f85149; --panel:rgba(18,18,20,.94); --line:#2b2f35; --dim:#9aa1a9; --acc:#ff6a3d; }
   html, body { margin:0; height:100%; background:var(--bg); overflow:hidden; overscroll-behavior:none; color:#eee;
                font:15px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
-  /* player is 120px taller than the screen so YouTube's own title bar / "More videos" strip sit off-screen */
+  /* player is 120px taller than the screen so YouTube's own title bar / end-screen strip sit off-screen */
   #player, #player iframe { position:fixed; left:0; top:-60px; width:100vw; height:calc(100dvh + 120px); border:0; }
   #layer { position:fixed; inset:0; z-index:2; cursor:none; touch-action:none; -webkit-tap-highlight-color:transparent; }
   #layer.awake { cursor:default; }
   .ctl { position:fixed; z-index:3; opacity:0; transition:opacity .25s; pointer-events:none; }
   .ctl.show { opacity:1; pointer-events:auto; }
   #rail { right:22px; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:14px; }
-  #rail button { width:60px; height:60px; border-radius:50%; border:0; background:rgba(20,20,20,.65); font-size:26px; cursor:pointer;
-                 color:#eee; backdrop-filter:blur(6px); transition:transform .1s, background .15s; }
-  #rail button:hover { transform:scale(1.07); }
+  #rail button, #ask button { border:0; background:rgba(20,20,20,.7); color:#eee; cursor:pointer; backdrop-filter:blur(6px);
+                 transition:transform .1s, background .15s; }
+  #rail button { width:60px; height:60px; border-radius:50%; font-size:26px; }
+  #rail button:hover, #ask button:hover { transform:scale(1.06); }
   #rail button.txt { font:700 15px system-ui, sans-serif; }
   #rail button.on { background:#eee; color:#111; }
-  #rail button.on.like { background:var(--good); } #rail button.on.dislike { background:var(--bad); }
-  #pill { left:18px; top:18px; display:flex; gap:8px; align-items:center; background:rgba(20,20,20,.75); padding:6px 8px 6px 14px;
-          border-radius:999px; backdrop-filter:blur(6px); font-weight:600; }
-  #pill button { border:0; background:#333; color:#eee; width:26px; height:26px; border-radius:50%; cursor:pointer; }
-  #pill:empty, #pill.none { display:none; }
+  #rail button.on.good { background:var(--good); } #rail button.on.bad { background:var(--bad); }
+  /* "good or not good?" prompt: shown when you try to move on, or the video ends, without reacting */
+  #ask { left:50%; bottom:12%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:12px;
+         background:rgba(10,10,12,.82); padding:16px 20px; border-radius:18px; backdrop-filter:blur(8px); }
+  #ask div { font-weight:600; }
+  #ask span { display:flex; gap:12px; }
+  #ask button { font:700 17px system-ui, sans-serif; padding:14px 24px; border-radius:999px; }
+  #ask .good { background:var(--good); color:#06210c; } #ask .bad { background:var(--bad); color:#2b0705; }
   #toast { position:fixed; left:50%; bottom:40px; transform:translateX(-50%); z-index:6; padding:8px 16px; border-radius:999px;
            background:rgba(20,20,20,.8); font-weight:600; opacity:0; transition:opacity .3s; pointer-events:none; white-space:nowrap; }
   #toast.show { opacity:1; }
   #wait { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; color:#555; z-index:1; text-align:center; padding:20px; }
-
-  /* overlays: search, channel page, settings */
   .sheet { position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.72); display:none; justify-content:center; align-items:flex-start;
-           padding:max(5vh, env(safe-area-inset-top)) 14px 14px; backdrop-filter:blur(4px); }
+           padding:max(6vh, env(safe-area-inset-top)) 14px 14px; backdrop-filter:blur(4px); }
   .sheet.open { display:flex; }
-  .box { width:min(680px, 100%); max-height:88dvh; overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:14px; }
-  .box input { width:100%; box-sizing:border-box; font:inherit; font-size:18px; color:#eee; background:#0c0d0f; border:1px solid var(--line);
-               border-radius:12px; padding:12px 14px; outline:none; }
-  .box input:focus { border-color:#555; }
-  .opt { display:flex; align-items:center; gap:12px; padding:11px 10px; border-radius:10px; cursor:pointer; }
-  .opt:hover, .opt.sel { background:#22252a; }
-  .opt .ic { width:34px; text-align:center; font-size:18px; }
-  .opt small { color:var(--dim); display:block; }
-  .opt .go { margin-left:auto; color:var(--dim); font-size:13px; white-space:nowrap; }
-  .hint { color:var(--dim); font-size:13px; padding:8px 10px 2px; }
-  .row { display:flex; gap:10px; align-items:center; }
+  .box { width:min(560px, 100%); max-height:88dvh; overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px; }
+  .box input { width:100%; box-sizing:border-box; font:inherit; color:#eee; background:#0c0d0f; border:1px solid var(--line);
+               border-radius:10px; padding:11px 12px; outline:none; }
+  .hint { color:var(--dim); font-size:13px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .btn { font:inherit; font-weight:600; border:0; border-radius:10px; padding:10px 16px; cursor:pointer; background:#2a2d33; color:#eee; }
   .btn.pri { background:var(--acc); color:#111; }
-  .vids { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px; margin-top:12px; }
-  .vid { cursor:pointer; }
-  .vid img { width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px; display:block; background:#111; }
-  .vid .t { font-size:13px; margin-top:6px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-  .vid .m { font-size:12px; color:var(--dim); }
-  .vid.seen { opacity:.55; }
-  .tabs { display:flex; gap:6px; margin-top:10px; }
-  .tabs .btn { padding:6px 12px; font-size:13px; }
-  .tabs .btn.on { background:#eee; color:#111; }
   label { display:block; font-size:13px; color:var(--dim); margin:12px 0 4px; }
-  @media (pointer: coarse) { #rail { right:12px; gap:11px; } #rail button { width:52px; height:52px; font-size:22px; } }
+  @media (pointer: coarse) { #rail { right:12px; gap:11px; } #rail button { width:54px; height:54px; font-size:23px; } }
 </style>
 </head>
 <body>
 <div id="player"></div>
 <div id="wait">loading…</div>
 <div id="layer"></div>
-<div class="ctl" id="pill"></div>
 <div class="ctl" id="rail">
-  <button class="like" id="like" title="Like (L)">👍</button>
-  <button class="dislike" id="dislike" title="Dislike (D)">👎</button>
+  <button class="good" id="good" title="Good recommendation (G)">👍</button>
+  <button class="bad" id="bad" title="Not good (B)">👎</button>
   <button class="txt" id="cc" title="Captions (C)">CC</button>
   <button class="txt" id="speed" title="Speed: ] faster, [ slower">1×</button>
-  <button id="find" title="Search a topic or channel (/)">🔍</button>
-  <button id="gear" title="Sync settings">⚙</button>
+  <button id="gear" title="Sync">⚙</button>
 </div>
+<div class="ctl" id="ask"><div>Was this a good recommendation?</div><span><button class="good" id="askGood">👍 Good</button><button class="bad" id="askBad">👎 Not good</button></span></div>
 <div id="toast"></div>
 
-<div class="sheet" id="searchSheet"><div class="box">
-  <input id="q" placeholder="Topic (e.g. ai) or channel name…" autocomplete="off" enterkeyhint="go">
-  <div id="results"></div>
-</div></div>
-
-<div class="sheet" id="chanSheet"><div class="box">
-  <div class="row"><h3 id="chanName" style="margin:0;flex:1"></h3><button class="btn pri" id="chanPlay">▶ Play</button><button class="btn" id="chanClose">✕</button></div>
-  <div class="tabs"><button class="btn on" data-s="best">Best for you</button><button class="btn" data-s="pop">Most viewed</button></div>
-  <div class="vids" id="chanVids"></div>
-</div></div>
-
 <div class="sheet" id="setSheet"><div class="box">
-  <h3 style="margin:0 0 4px">Sync your watching</h3>
-  <div class="hint" style="padding:0">So the cloud model learns from what you watch here. Stored only on this device.</div>
-  <label>Passphrase (the one you set as VXP_PASSPHRASE)</label><input id="sPass" type="password" autocomplete="off">
+  <h3 style="margin:0 0 4px">Sync</h3>
+  <div class="hint">Sends your reactions to the cloud model and keeps your devices in step. Stored only on this device.</div>
+  <label>Passphrase</label><input id="sPass" type="password" autocomplete="off">
   <label>GitHub token (fine-grained, this repo only, Contents: read &amp; write)</label><input id="sTok" type="password" autocomplete="off">
   <label>Repository</label><input id="sRepo" placeholder="owner/repo">
   <div class="row" style="margin-top:14px"><button class="btn pri" id="sSave">Save</button><button class="btn" id="sSync">Sync now</button><button class="btn" id="sClose" style="margin-left:auto">Close</button></div>
-  <div class="hint" id="sStat"></div>
+  <div class="hint" id="sStat" style="margin-top:10px"></div>
 </div></div>
 
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const LS = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
              set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-const fmtD = s => { if (!s) return ""; s = Math.round(s); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = String(s%60).padStart(2,"0"); return h ? `${h}:${String(m).padStart(2,"0")}:${x}` : `${m}:${x}`; };
-const fmtN = n => !n ? "" : n >= 1e9 ? (n/1e9).toFixed(1)+"B" : n >= 1e6 ? (n/1e6).toFixed(1)+"M" : n >= 1e3 ? (n/1e3).toFixed(0)+"K" : n;
+const now = () => Date.now() / 1000;
 
 // ---------------- data ----------------
-const D = { rows: [], vec: null, dim: 128, feed: [], byId: new Map(), channels: [], pca: null };
-const seen = new Set(LS.get("seen", []));
-const session = LS.get("session", { kept: [], skipped: [] });   // catalog ids, most recent last
-let S = { queue: [], played: [], cur: null, watched: 0, liked: null, filling: false, activated: false, applied: null };
-let mode = LS.get("mode", null);                                  // null | {type:"topic", q, ids:[…]} | {type:"channel", name, start}
+const D = { rows: [], vec: null, dim: 128, byId: new Map(), generated: 0 };
+const seen = new Set(LS.get("seen", []));              // reacted to (never shown again) — on this device or synced
+let ratings = LS.get("ratings", {});                   // id -> {w, ts}: reactions made on this device
+let progress = LS.get("progress", {});                 // id -> {pos, ts, t, c, d}: unfinished videos (resume point)
+let cloud = LS.get("cloud", { generated: 0, taste: null });
+let stats = LS.get("stats", { n: 0, topics: {}, channels: {} });
+let S = { queue: [], played: [], cur: null, watched: 0, secs: 0, activated: false, applied: null, ended: false };
 
-function install(src, vec, feedIds) {
-  const c = Object.fromEntries(src.cols.map((k, i) => [k, i]));
-  D.dim = src.dim; D.vec = vec;
-  D.rows = src.rows.map((r, i) => ({ i, id: r[c.id], title: r[c.title], channel: r[c.channel], dur: r[c.duration], topic: r[c.topic],
-                                      p: r[c.p], views: r[c.views] }));
-  src.rows.forEach(r => { if (r[c.seen]) seen.add(r[c.id]); });
-  D.byId = new Map(D.rows.map(r => [r.id, r]));
-  D.feed = feedIds ? feedIds.map(id => D.byId.get(id)).filter(Boolean).map(r => r.i) : D.rows.map(r => r.i);
-  const n = new Map(); D.rows.forEach(r => n.set(r.channel, (n.get(r.channel) || 0) + 1));
-  D.channels = [...n.entries()].map(([name, count]) => ({ name, count, key: norm(name) })).sort((a, b) => b.count - a.count);
-}
-// fast start: the small feed (a few hundred videos) is enough to begin playing
 async function load() {
   const feed = await fetch("feed.json", { cache: "no-cache" }).then(r => r.json());
-  install(feed, Int8Array.from(atob(feed.vec), ch => ch.charCodeAt(0)), null);
-  D.full = false;
-  loadCatalog(feed.rows.map(r => r[0]));
-}
-// then the whole catalog in the background (needed for topic / channel search)
-async function loadCatalog(feedIds) {
-  try {
-    const [cat, bin] = await Promise.all([fetch("catalog.json").then(r => r.json()), fetch("catalog.bin").then(r => r.arrayBuffer())]);
-    install(cat, new Int8Array(bin), feedIds);
-    D.full = true;
-    if ($("#searchSheet").classList.contains("open")) renderResults();
-  } catch (e) { console.warn("catalog not loaded", e); }
-}
-const norm = s => (s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "");
-
-function dot(i, v) { let s = 0; const o = i * D.dim; for (let k = 0; k < D.dim; k++) s += D.vec[o + k] * v[k]; return s / 127; }
-function centroid(ids) {
-  const v = new Float32Array(D.dim); let n = 0;
-  for (const id of ids.slice(-20)) { const r = D.byId.get(id); if (!r) continue; const o = r.i * D.dim; for (let k = 0; k < D.dim; k++) v[k] += D.vec[o + k] / 127; n++; }
-  if (!n) return null; let m = 0; for (let k = 0; k < D.dim; k++) m += v[k] * v[k]; m = Math.sqrt(m) || 1; for (let k = 0; k < D.dim; k++) v[k] /= m; return v;
+  const c = Object.fromEntries(feed.cols.map((k, i) => [k, i]));
+  D.dim = feed.dim; D.generated = feed.generated;
+  D.vec = Int8Array.from(atob(feed.vec), ch => ch.charCodeAt(0));
+  D.rows = feed.rows.map((r, i) => ({ i, id: r[c.id], title: r[c.title], channel: r[c.channel], dur: r[c.duration],
+                                      topic: r[c.topic], p: r[c.p], views: r[c.views], kind: r[c.kind] }));
+  D.byId = new Map(D.rows.map(r => [r.id, r]));
 }
 
-// ---------------- ranking on the phone ----------------
-// cloud prediction (p) + what this device just kept watching / skipped, never the same channel twice in a row,
-// ~15% exploration in the normal feed
-function pickNext(n = 2) {
-  const K = centroid(session.kept), X = centroid(session.skipped);
-  const busy = new Set([S.cur, ...S.queue, ...S.played.slice(-200)].filter(Boolean).map(v => v.id));
-  let pool;
-  if (mode && mode.type === "channel") pool = D.rows.filter(r => r.channel === mode.name);
-  else if (mode && mode.type === "topic") pool = mode.ids.map(id => D.byId.get(id)).filter(Boolean);
-  else pool = D.feed.map(i => D.rows[i]);
-  pool = pool.filter(r => !busy.has(r.id) && !seen.has(r.id));
-  const score = r => (mode && mode.type === "topic" ? 0.5 * r.p + 0.5 * (mode.rel[r.id] || 0) : r.p)
-                     + (K ? 0.12 * dot(r.i, K) : 0) - (X ? 0.12 * dot(r.i, X) : 0);
-  pool.sort((a, b) => score(b) - score(a));
-  const out = []; let last = S.queue.length ? S.queue[S.queue.length - 1] : S.cur;
-  while (pool.length && out.length < n) {
-    let j = 0;
-    if (!mode && Math.random() < 0.15 && pool.length > 30) j = 10 + Math.floor(Math.random() * Math.min(150, pool.length - 10));
-    else if (!mode || mode.type === "topic") { const k = pool.findIndex(r => !last || r.channel !== last.channel); j = k < 0 ? 0 : k; }
-    const v = pool.splice(j, 1)[0]; out.push(v); last = v;
+// ---------------- taste vector ----------------
+// cloud taste (from all synced reactions) + reactions made here since then: good pulls toward the video,
+// not good pushes away, a fast skip pushes away a little
+function taste() {
+  const v = new Float32Array(D.dim);
+  if (cloud.taste && cloud.taste.length === D.dim && cloud.generated === D.generated) for (let k = 0; k < D.dim; k++) v[k] = cloud.taste[k] * 3;
+  for (const [id, r] of Object.entries(ratings)) {
+    const row = D.byId.get(id);
+    if (!row || (cloud.generated === D.generated && r.ts < cloud.generated && r.synced)) continue;
+    const o = row.i * D.dim; for (let k = 0; k < D.dim; k++) v[k] += r.w * D.vec[o + k] / 127;
   }
-  return out;
+  let m = 0; for (let k = 0; k < D.dim; k++) m += v[k] * v[k]; m = Math.sqrt(m);
+  if (!m) return null; for (let k = 0; k < D.dim; k++) v[k] /= m; return v;
 }
-function fill() { if (S.queue.length < 3) S.queue.push(...pickNext(3 - S.queue.length)); }
+function cos(i, v) { let s = 0; const o = i * D.dim; for (let k = 0; k < D.dim; k++) s += D.vec[o + k] * v[k]; return s / 127; }
+
+// ---------------- what plays next ----------------
+// every 5 videos: taste, taste, ESSENTIAL (must-watch, least-seen topic), taste, EXPLORE (a channel you've never seen)
+const PATTERN = ["t", "t", "m", "t", "x"];
+function pickNext() {
+  const busy = new Set([S.cur, ...S.queue].filter(Boolean).map(v => v.id));
+  const free = D.rows.filter(r => !seen.has(r.id) && !busy.has(r.id) && !progress[r.id]);
+  if (!free.length) return null;
+  const last = S.queue.length ? S.queue[S.queue.length - 1] : S.cur;
+  const slot = PATTERN[(stats.n + S.queue.length) % PATTERN.length];
+  const T = taste();
+  const tScore = r => r.p + (T ? 0.35 * cos(r.i, T) : 0) - (last && r.channel === last.channel ? 1 : 0) - 0.04 * (stats.channels[r.channel] || 0);
+  let pool = free.filter(r => r.kind === slot), v;
+  if (slot === "m" && pool.length) {
+    const least = Math.min(...pool.map(r => stats.topics[r.topic] || 0));
+    pool = pool.filter(r => (stats.topics[r.topic] || 0) === least);
+    v = pool.sort((a, b) => (b.views || 0) - (a.views || 0))[Math.floor(Math.random() * Math.min(3, pool.length))];
+  } else if (slot === "x" && pool.length) {
+    const fresh = pool.filter(r => !stats.channels[r.channel]);
+    v = (fresh.length ? fresh : pool)[Math.floor(Math.random() * (fresh.length || pool.length))];
+  } else {
+    pool = pool.length ? pool : free;
+    v = pool.sort((a, b) => tScore(b) - tScore(a))[0];
+  }
+  return v;
+}
+function fill() { while (S.queue.length < 2) { const v = pickNext(); if (!v) break; S.queue.push(v); } }
 
 // ---------------- playback ----------------
 let player = null, ytReady = false;
 window.onYouTubeIframeAPIReady = () => { ytReady = true; };
 
-function next() {
-  flushWatch();
+function advance() {
+  saveProgress(true);
   if (S.cur) S.played.push(S.cur);
   S.cur = null; fill();
   const v = S.queue.shift();
-  if (!v) { $("#wait").textContent = mode ? "Nothing left here. Tap the pill’s ✕ to go back to your feed." : "That’s everything for now. New videos arrive with the next cloud run."; return; }
+  if (!v) { $("#wait").textContent = "That’s everything for now. New videos arrive with the next cloud run."; return; }
   $("#wait").textContent = ""; play(v); fill();
 }
-function back() { if (!S.played.length) return; flushWatch(); if (S.cur) S.queue.unshift(S.cur); play(S.played.pop()); }
+// → / swipe: you must react first. Exception: moving on within 10 s counts as a soft "not good".
+function next() {
+  if (!S.cur) return advance();
+  if (ratings[S.cur.id] || seen.has(S.cur.id)) return advance();      // went back to something already rated
+  if (S.secs < 10 && !S.ended) { react(-1, true); toast("Skipped"); return; }
+  ask();
+}
+function back() { if (!S.played.length) return; saveProgress(true); if (S.cur) S.queue.unshift(S.cur); play(S.played.pop()); }
 
-function play(v) {
-  S.cur = v; S.watched = 0; S.liked = null;
-  $("#like").classList.remove("on"); $("#dislike").classList.remove("on");
+function play(v, at = 0) {
+  S.cur = v; S.watched = 0; S.secs = 0; S.ended = false; hideAsk();
+  const r = ratings[v.id];
+  $("#good").classList.toggle("on", !!r && r.w > 0); $("#bad").classList.toggle("on", !!r && r.w < 0);
   document.title = v.title || "Video XP";
   const go = () => {
-    if (player && player.loadVideoById) { player.loadVideoById(v.id); return; }
+    if (player && player.loadVideoById) { player.loadVideoById({ videoId: v.id, startSeconds: at }); return; }
     player = new YT.Player("player", { videoId: v.id, host: "https://www.youtube-nocookie.com",
       playerVars: { autoplay: 1, mute: 1, controls: 0, disablekb: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, fs: 0,
-                    cc_load_policy: pref.cc ? 1 : 0, cc_lang_pref: "en" },
+                    start: Math.floor(at), cc_load_policy: pref.cc ? 1 : 0, cc_lang_pref: "en" },
       events: {
         onReady: () => { if (S.activated) player.unMute(); },
         onStateChange: e => {
-          if (e.data === YT.PlayerState.ENDED) next();
+          if (e.data === YT.PlayerState.ENDED) { S.ended = true; if (S.cur && !ratings[S.cur.id]) ask(); }   // never auto-advances
           if (e.data === YT.PlayerState.PLAYING && S.applied !== S.cur?.id) { S.applied = S.cur?.id; applyPrefs(); }
+          if (e.data === YT.PlayerState.PAUSED) saveProgress();
         },
-        onError: () => { if (S.cur) seen.add(S.cur.id); S.cur = null; next(); } } });
+        onError: () => { if (S.cur) { seen.add(S.cur.id); LS.set("seen", [...seen].slice(-8000)); } S.cur = null; advance(); } } });
   };
   if (ytReady) go(); else { const t = setInterval(() => { if (ytReady) { clearInterval(t); go(); } }, 150); }
 }
-setInterval(() => { if (player && player.getPlayerState && player.getPlayerState() === 1) S.watched += (player.getPlaybackRate() || 1); }, 1000);
+setInterval(() => {
+  if (player && player.getPlayerState && player.getPlayerState() === 1) { S.secs += 1; S.watched += (player.getPlaybackRate() || 1); if (S.secs % 15 === 0) saveProgress(); }
+}, 1000);
 
-// ---------------- watch data: learn now, sync later ----------------
-function flushWatch() {
-  const v = S.cur;
-  if (!v || (S.watched < 1 && S.liked == null)) return;
-  const dur = (player && player.getDuration && player.getDuration()) || v.dur || 0;
-  const e = { id: v.id, watched: Math.round(S.watched), duration: Math.round(dur), liked: S.liked, ts: Date.now() / 1000 };
-  seen.add(v.id); LS.set("seen", [...seen].slice(-5000));
-  const kept = S.liked === 1 || S.watched >= Math.min(0.5 * dur, 240), skipped = S.liked === -1 || S.watched < 20;
-  if (kept) session.kept.push(v.id); else if (skipped) session.skipped.push(v.id);
-  session.kept = session.kept.slice(-40); session.skipped = session.skipped.slice(-40); LS.set("session", session);
-  const q = LS.get("outbox", []); q.push(e); LS.set("outbox", q);
-  S.watched = 0; S.liked = null;
-  if (q.length >= 8 || Date.now() - LS.get("lastSync", 0) > 15 * 60e3) sync();
+// ---------------- reactions + progress: stored here, synced to the cloud ----------------
+function pos() { try { return Math.floor(player.getCurrentTime()) || 0; } catch { return 0; } }
+function dur() { try { return Math.round(player.getDuration()) || S.cur?.dur || 0; } catch { return S.cur?.dur || 0; } }
+function queueEvent(e) {                                // one pending entry per video; a reaction replaces progress
+  const q = LS.get("outbox", []).filter(x => x.id !== e.id || (x.liked != null && e.liked == null));
+  if (!q.some(x => x.id === e.id)) q.push(e);
+  LS.set("outbox", q);
 }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { flushWatch(); sync(true); } });
+function react(x, soft = false) {
+  const v = S.cur; if (!v) return;
+  const w = x > 0 ? 1 : soft ? -0.35 : -0.7;
+  ratings[v.id] = { w, ts: now() }; LS.set("ratings", ratings);
+  seen.add(v.id); LS.set("seen", [...seen].slice(-8000));
+  delete progress[v.id]; LS.set("progress", progress);
+  stats.n += 1; stats.topics[v.topic] = (stats.topics[v.topic] || 0) + 1; stats.channels[v.channel] = (stats.channels[v.channel] || 0) + 1; LS.set("stats", stats);
+  queueEvent({ id: v.id, liked: x > 0 ? 1 : -1, soft: soft ? 1 : 0, watched: Math.round(S.watched), pos: pos(), duration: dur(), ts: now() });
+  S.queue = [];                                         // re-pick with the updated taste
+  advance(); syncSoon();
+}
+function saveProgress(final = false) {
+  const v = S.cur;
+  if (!v || ratings[v.id] || seen.has(v.id) || S.secs < 10) return;
+  const p = pos(); if (!p) return;
+  progress[v.id] = { pos: p, ts: now(), t: v.title, c: v.channel, d: v.dur || dur() }; LS.set("progress", progress);
+  queueEvent({ id: v.id, liked: null, watched: Math.round(S.watched), pos: p, duration: dur(), ts: now() });
+  if (final) syncSoon();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { saveProgress(); sync(true); } });
 
+function ask() { $("#ask").classList.add("show"); showControls(60000); }
+function hideAsk() { $("#ask").classList.remove("show"); }
+
+// ---------------- sync (GitHub: encrypted files on the data branch) ----------------
 const cfg = () => LS.get("cfg", { pass: "", token: "", repo: guessRepo() });
 function guessRepo() { const owner = location.hostname.split(".")[0], repo = location.pathname.split("/").filter(Boolean)[0]; return location.hostname.endsWith("github.io") && repo ? `${owner}/${repo}` : ""; }
 const b64 = buf => { let s = ""; const a = new Uint8Array(buf); for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); return btoa(s); };
-async function encrypt(text, pass) {        // same format as crypto_box.py: AES-256-GCM, PBKDF2-SHA256 200k
-  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function key(pass, salt, use) {                 // same format as crypto_box.py: AES-256-GCM, PBKDF2-SHA256 200k
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
-  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(text));
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, [use]);
+}
+async function encrypt(text, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await key(pass, salt, "encrypt"), new TextEncoder().encode(text));
   return JSON.stringify({ v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct) });
 }
-let syncing = false;
+async function decrypt(blob, pass) {
+  const d = typeof blob === "string" ? JSON.parse(blob) : blob;
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(d.iv) }, await key(pass, unb64(d.salt), "decrypt"), unb64(d.ct));
+  return new TextDecoder().decode(pt);
+}
+let syncing = false, syncT;
+function syncSoon() { clearTimeout(syncT); syncT = setTimeout(sync, 2500); }
 async function sync(leaving = false) {
   const c = cfg(), q = LS.get("outbox", []);
   if (syncing || !q.length || !c.pass || !c.token || !c.repo) return;
@@ -245,20 +249,51 @@ async function sync(leaving = false) {
   try {
     const body = await encrypt(JSON.stringify({ events: q }), c.pass);
     const name = `events/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`;
-    const r = await fetch(`https://api.github.com/repos/${c.repo}/contents/${name}`, { method: "PUT", keepalive: leaving,
-      headers: { Authorization: `Bearer ${c.token}`, Accept: "application/vnd.github+json" },
-      body: JSON.stringify({ message: "watch data", content: btoa(body), branch: "data" }) });
+    const H = { Authorization: `Bearer ${c.token}`, Accept: "application/vnd.github+json" };
+    const r = await fetch(`https://api.github.com/repos/${c.repo}/contents/${name}`, { method: "PUT", keepalive: leaving, headers: H,
+      body: JSON.stringify({ message: "reactions", content: btoa(body), branch: "data" }) });
     if (!r.ok) throw new Error(`GitHub ${r.status}`);
-    LS.set("outbox", LS.get("outbox", []).slice(q.length)); LS.set("lastSync", Date.now()); LS.set("syncErr", "");
-    // ask the cloud to retrain with it (at most every 30 min; scheduled runs pick up anything else)
-    if (Date.now() - LS.get("lastDispatch", 0) > 30 * 60e3) {
-      const d = await fetch(`https://api.github.com/repos/${c.repo}/dispatches`, { method: "POST", keepalive: leaving,
-        headers: { Authorization: `Bearer ${c.token}`, Accept: "application/vnd.github+json" },
+    const sent = new Set(q.map(e => e.id + ":" + e.ts));
+    LS.set("outbox", LS.get("outbox", []).filter(e => !sent.has(e.id + ":" + e.ts)));
+    for (const e of q) if (e.liked != null && ratings[e.id]) ratings[e.id].synced = 1;
+    LS.set("ratings", ratings); LS.set("lastSync", Date.now()); LS.set("syncErr", "");
+    // ask the cloud to retrain (at most every 15 min, and only when there are new reactions)
+    if (q.some(e => e.liked != null) && Date.now() - LS.get("lastDispatch", 0) > 15 * 60e3) {
+      const d = await fetch(`https://api.github.com/repos/${c.repo}/dispatches`, { method: "POST", keepalive: leaving, headers: H,
         body: JSON.stringify({ event_type: "watch-data" }) });
       if (d.ok) LS.set("lastDispatch", Date.now());
     }
   } catch (e) { LS.set("syncErr", String(e.message || e)); }
   finally { syncing = false; }
+}
+
+// what your other devices did: the cloud's state file + uploads the cloud hasn't processed yet
+async function pullState() {
+  const c = cfg(); if (!c.pass) return;
+  try {
+    const st = JSON.parse(await decrypt(await fetch("state.enc", { cache: "no-cache" }).then(r => r.text()), c.pass));
+    cloud = { generated: st.generated, taste: st.taste }; LS.set("cloud", cloud);
+    for (const p of st.progress || []) mergeProgress(p.id, p);
+  } catch (e) { console.warn("state not readable (wrong passphrase?)", e); LS.set("syncErr", "can't read cloud state: check the passphrase"); }
+  if (!c.repo) return;
+  try {
+    const H = c.token ? { Authorization: `Bearer ${c.token}`, Accept: "application/vnd.github+json" } : { Accept: "application/vnd.github+json" };
+    const list = await fetch(`https://api.github.com/repos/${c.repo}/contents/events?ref=data`, { headers: H }).then(r => r.ok ? r.json() : []);
+    for (const f of list.filter(f => f.name.endsWith(".json")).slice(-25)) {
+      const blob = await fetch(f.download_url).then(r => r.text());
+      for (const e of JSON.parse(await decrypt(blob, c.pass)).events || []) {
+        if (e.liked != null) { seen.add(e.id); delete progress[e.id]; if (!ratings[e.id]) ratings[e.id] = { w: e.liked > 0 ? 1 : e.soft ? -0.35 : -0.7, ts: e.ts, synced: 1 }; }
+        else mergeProgress(e.id, { pos: e.pos, ts: e.ts, d: e.duration });
+      }
+    }
+    LS.set("seen", [...seen].slice(-8000)); LS.set("ratings", ratings); LS.set("progress", progress);
+  } catch (e) { console.warn("pending uploads not readable", e); }
+}
+function mergeProgress(id, p) {
+  if (seen.has(id) || ratings[id] || !p.pos) return;
+  const row = D.byId.get(id), old = progress[id];
+  if (!old || p.ts > old.ts) progress[id] = { pos: p.pos, ts: p.ts, t: p.t || old?.t || row?.title, c: p.c || old?.c || row?.channel, d: p.d || old?.d || row?.dur };
+  LS.set("progress", progress);
 }
 
 // ---------------- captions + speed ----------------
@@ -273,122 +308,20 @@ function changeSpeed(dir) {
   LS.set("pref", pref); if (player && player.setPlaybackRate) player.setPlaybackRate(pref.speed); renderPrefs(); toast(pref.speed + "×");
 }
 function renderPrefs() { $("#cc").classList.toggle("on", pref.cc); $("#speed").textContent = pref.speed + "×"; $("#speed").classList.toggle("on", pref.speed !== 1); }
-let toastT; function toast(m) { $("#toast").textContent = m; $("#toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("#toast").classList.remove("show"), 1300); }
-
-// ---------------- modes: only a topic / only a channel ----------------
-function setMode(m) {
-  const start = m && m.start;                      // a specific video picked on a channel page
-  if (m) delete m.start;
-  mode = m; LS.set("mode", m);
-  renderPill();
-  S.queue = [];
-  if (start) { flushWatch(); if (S.cur) S.played.push(S.cur); play(D.byId.get(start)); fill(); }
-  else next();
-}
-function renderPill() {
-  const p = $("#pill");
-  if (!mode) { p.classList.add("none"); p.innerHTML = ""; return; }
-  p.classList.remove("none");
-  p.innerHTML = `<span>${mode.type === "channel" ? "📺 " : "🎯 "}${esc(mode.type === "channel" ? mode.name : mode.q)}</span><button title="Back to your feed">✕</button>`;
-  p.querySelector("button").onclick = e => { e.stopPropagation(); setMode(null); toast("Back to your feed"); };
-}
-
-// typed text -> MiniLM vector in the browser (same model as the cloud), projected with the cloud's PCA
-let embedder = null;
-async function embedQuery(text) {
-  if (!D.pca) { const b = new Float32Array(await fetch("pca.bin").then(r => r.arrayBuffer())); D.pca = { mean: b.subarray(0, 384), P: b.subarray(384) }; }
-  if (!embedder) {
-    const { pipeline, env } = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2");
-    env.allowLocalModels = false;
-    embedder = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { quantized: true });
-  }
-  const x = (await embedder(text, { pooling: "mean", normalize: true })).data;
-  const z = new Float32Array(D.dim);
-  for (let j = 0; j < D.dim; j++) { let s = 0; for (let k = 0; k < 384; k++) s += (x[k] - D.pca.mean[k]) * D.pca.P[k * D.dim + j]; z[j] = s; }
-  let m = 0; for (let j = 0; j < D.dim; j++) m += z[j] * z[j]; m = Math.sqrt(m) || 1; for (let j = 0; j < D.dim; j++) z[j] /= m;
-  return z;
-}
-async function focusTopic(q) {
-  closeSheets(); toast(`Finding “${q}” videos…`);
-  const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 1);
-  const re = words.length ? new RegExp(`\\b(${words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i") : null;
-  let z = null;
-  try { z = await embedQuery(q); } catch (e) { console.warn("semantic search unavailable, using keywords", e); }
-  const rel = {};
-  for (const r of D.rows) {
-    let s = z ? dot(r.i, z) : 0;
-    if (re && re.test(`${r.title} ${r.channel} ${r.topic}`)) s += z ? 0.25 : 1;
-    rel[r.id] = s;
-  }
-  const ranked = D.rows.filter(r => !seen.has(r.id)).sort((a, b) => rel[b.id] - rel[a.id]);
-  const best = ranked.length ? rel[ranked[0].id] : 0;
-  const ids = ranked.filter(r => rel[r.id] >= Math.max(0.3, 0.6 * best)).slice(0, 400).map(r => r.id);
-  if (!ids.length) { toast(`No “${q}” videos yet`); return; }
-  const relSmall = {}; ids.forEach(id => relSmall[id] = rel[id]);
-  setMode({ type: "topic", q, ids, rel: relSmall });
-  toast(`Only “${q}”: ${ids.length} videos`);
-}
-
-// ---------------- search sheet ----------------
-function openSheet(id) { closeSheets(); $(id).classList.add("open"); }
-function closeSheets() { document.querySelectorAll(".sheet").forEach(s => s.classList.remove("open")); }
-let sel = 0, opts = [];
-function openSearch() { openSheet("#searchSheet"); const i = $("#q"); i.value = ""; renderResults(); setTimeout(() => i.focus(), 30); }
-function renderResults() {
-  const q = $("#q").value.trim(), k = norm(q);
-  opts = [];
-  if (q) opts.push({ kind: "topic", q });
-  if (k) D.channels.filter(c => c.key.includes(k)).slice(0, 7).forEach(c => opts.push({ kind: "channel", c }));
-  if (!q) D.channels.slice(0, 6).forEach(c => opts.push({ kind: "channel", c }));
-  sel = Math.min(sel, Math.max(0, opts.length - 1));
-  $("#results").innerHTML = (D.full ? "" : `<div class="hint">Loading the full catalogue… results fill in after a few seconds.</div>`) +
-    (q ? "" : `<div class="hint">Type a topic (only those videos will play) or a channel name. Your top channels:</div>`) +
-    opts.map((o, i) => o.kind === "topic"
-      ? `<div class="opt ${i === sel ? "sel" : ""}" data-i="${i}"><span class="ic">🎯</span><div>Only “${esc(o.q)}” videos<small>reels of just this topic</small></div><span class="go">Enter</span></div>`
-      : `<div class="opt ${i === sel ? "sel" : ""}" data-i="${i}"><span class="ic">📺</span><div>${esc(o.c.name)}<small>${o.c.count} videos</small></div>
-           <span class="go"><button class="btn" data-play="${i}">▶ Play</button> <button class="btn" data-open="${i}">Open</button></span></div>`).join("");
-  document.querySelectorAll("#results .opt").forEach(el => el.onclick = e => {
-    const o = opts[+el.dataset.i];
-    if (o.kind === "topic") return focusTopic(o.q);
-    if (e.target.dataset.open !== undefined) return openChannel(o.c.name);
-    closeSheets(); setMode({ type: "channel", name: o.c.name }); toast(`Only ${o.c.name}`);
-  });
-}
-$("#q").addEventListener("input", () => { sel = 0; renderResults(); });
-$("#q").addEventListener("keydown", e => {
-  if (e.key === "ArrowDown") { sel = Math.min(opts.length - 1, sel + 1); renderResults(); e.preventDefault(); }
-  else if (e.key === "ArrowUp") { sel = Math.max(0, sel - 1); renderResults(); e.preventDefault(); }
-  else if (e.key === "Enter" && opts[sel]) { const o = opts[sel]; if (o.kind === "topic") focusTopic(o.q); else { closeSheets(); setMode({ type: "channel", name: o.c.name }); toast(`Only ${o.c.name}`); } }
-  e.stopPropagation();
-});
-
-// ---------------- channel page: see its videos, tap one ----------------
-let chanSort = "best", chanNameOpen = "";
-function openChannel(name) { chanNameOpen = name; openSheet("#chanSheet"); $("#chanName").textContent = name; renderChannel(); }
-function renderChannel() {
-  const vids = D.rows.filter(r => r.channel === chanNameOpen);
-  const by = { best: (a, b) => b.p - a.p, pop: (a, b) => (b.views || 0) - (a.views || 0) }[chanSort];
-  vids.sort(by);
-  document.querySelectorAll("#chanSheet .tabs .btn").forEach(b => b.classList.toggle("on", b.dataset.s === chanSort));
-  $("#chanVids").innerHTML = vids.slice(0, 300).map(v => `<div class="vid ${seen.has(v.id) ? "seen" : ""}" data-id="${v.id}">
-      <img loading="lazy" src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" alt=""><div class="t">${esc(v.title)}</div>
-      <div class="m">${fmtD(v.dur)}${v.views ? " · " + fmtN(v.views) + " views" : ""}${seen.has(v.id) ? " · watched" : ""}</div></div>`).join("");
-  document.querySelectorAll("#chanVids .vid").forEach(el => el.onclick = () => { closeSheets(); setMode({ type: "channel", name: chanNameOpen, start: el.dataset.id }); });
-}
-document.querySelectorAll("#chanSheet .tabs .btn").forEach(b => b.onclick = () => { chanSort = b.dataset.s; renderChannel(); });
-$("#chanPlay").onclick = () => { closeSheets(); setMode({ type: "channel", name: chanNameOpen }); };
-$("#chanClose").onclick = closeSheets;
+let toastT; function toast(m) { $("#toast").textContent = m; $("#toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("#toast").classList.remove("show"), 1400); }
 
 // ---------------- settings ----------------
+const sheetOpen = () => $("#setSheet").classList.contains("open");
 function openSettings() {
   const c = cfg(); $("#sPass").value = c.pass; $("#sTok").value = c.token; $("#sRepo").value = c.repo;
   const q = LS.get("outbox", []), last = LS.get("lastSync", 0), err = LS.get("syncErr", "");
-  $("#sStat").textContent = `${q.length} views waiting to sync · last sync ${last ? new Date(last).toLocaleString() : "never"}${err ? " · last error: " + err : ""}`;
-  openSheet("#setSheet");
+  $("#sStat").textContent = `${Object.keys(ratings).length} reactions on this device · ${q.length} waiting to sync · last sync ${last ? new Date(last).toLocaleString() : "never"}${err ? " · " + err : ""}`;
+  $("#setSheet").classList.add("open");
 }
-$("#sSave").onclick = () => { LS.set("cfg", { pass: $("#sPass").value, token: $("#sTok").value.trim(), repo: $("#sRepo").value.trim() }); toast("Saved"); openSettings(); };
+$("#sSave").onclick = () => { LS.set("cfg", { pass: $("#sPass").value, token: $("#sTok").value.trim(), repo: $("#sRepo").value.trim() }); toast("Saved"); pullState().then(openSettings); };
 $("#sSync").onclick = async () => { await sync(); openSettings(); };
-$("#sClose").onclick = closeSheets;
+$("#sClose").onclick = () => $("#setSheet").classList.remove("open");
+$("#setSheet").addEventListener("click", e => { if (e.target.id === "setSheet") $("#setSheet").classList.remove("open"); });
 
 // ---------------- input ----------------
 function activate() {
@@ -399,28 +332,23 @@ function activate() {
     if (matchMedia("(pointer: coarse)").matches && screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(() => {});
   }).catch(() => {});
 }
-function rate(x) { S.liked = x; $("#like").classList.toggle("on", x === 1); $("#dislike").classList.toggle("on", x === -1); if (x === -1) next(); }
 function togglePause() { if (!player || !player.getPlayerState) return; player.getPlayerState() === 1 ? player.pauseVideo() : player.playVideo(); }
-const sheetOpen = () => !!document.querySelector(".sheet.open");
-
 document.addEventListener("keydown", e => {
-  if (sheetOpen()) { if (e.key === "Escape") closeSheets(); return; }
+  if (sheetOpen()) { if (e.key === "Escape") $("#setSheet").classList.remove("open"); return; }
   activate();
-  const k = e.key;
-  if (k === "ArrowRight") { e.preventDefault(); next(); }
-  else if (k === "ArrowLeft" || k === "Backspace") { e.preventDefault(); back(); }
+  const k = e.key.toLowerCase();
+  if (k === "arrowright") { e.preventDefault(); next(); }
+  else if (k === "arrowleft" || k === "backspace") { e.preventDefault(); back(); }
   else if (k === " ") { e.preventDefault(); togglePause(); }
-  else if (k === "/" || k === "s" || k === "S") { e.preventDefault(); openSearch(); }
-  else if (k === "Escape" && mode) { setMode(null); toast("Back to your feed"); }
-  else if (k === "l" || k === "L") rate(1);
-  else if (k === "d" || k === "D") rate(-1);
-  else if (k === "c" || k === "C") toggleCaptions();
+  else if (k === "g" || k === "l") react(1);
+  else if (k === "b" || k === "d") react(-1);
+  else if (k === "c") toggleCaptions();
   else if (k === "]" || k === ">") changeSpeed(1);
   else if (k === "[" || k === "<") changeSpeed(-1);
 });
 $("#layer").addEventListener("click", () => {
   const first = !S.activated; activate();
-  if (!first) togglePause();
+  if (!first && !S.ended) togglePause();
   if (matchMedia("(pointer: coarse)").matches) showControls(4000);
 });
 let touch = null;
@@ -432,15 +360,14 @@ $("#layer").addEventListener("touchend", e => {
   touch = null; if (!swipe) return;
   e.preventDefault(); activate(); dy > 0 ? next() : back();
 });
-$("#like").onclick = () => rate(1); $("#dislike").onclick = () => rate(-1);
-$("#cc").onclick = toggleCaptions; $("#speed").onclick = () => changeSpeed(0);
-$("#find").onclick = openSearch; $("#gear").onclick = openSettings;
-document.querySelectorAll(".sheet").forEach(s => s.addEventListener("click", e => { if (e.target === s) closeSheets(); }));
+$("#good").onclick = $("#askGood").onclick = () => react(1);
+$("#bad").onclick = $("#askBad").onclick = () => react(-1);
+$("#cc").onclick = toggleCaptions; $("#speed").onclick = () => changeSpeed(0); $("#gear").onclick = openSettings;
 
 let idle;
 function showControls(ms = 2200) {
-  document.querySelectorAll(".ctl").forEach(c => c.classList.add("show")); $("#layer").classList.add("awake");
-  clearTimeout(idle); idle = setTimeout(() => { document.querySelectorAll(".ctl").forEach(c => c.classList.remove("show")); $("#layer").classList.remove("awake"); }, ms);
+  $("#rail").classList.add("show"); $("#layer").classList.add("awake");
+  clearTimeout(idle); idle = setTimeout(() => { if ($("#ask").classList.contains("show")) return; $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
 }
 document.addEventListener("mousemove", e => { if (!e.sourceCapabilities || !e.sourceCapabilities.firesTouchEvents) showControls(); });
 document.addEventListener("touchstart", e => { if (e.target.closest(".ctl")) showControls(4000); }, { passive: true });
@@ -450,13 +377,19 @@ document.addEventListener("touchstart", e => { if (e.target.closest(".ctl")) sho
 if (location.hash.startsWith("#p=")) {
   const c = cfg(); c.pass = decodeURIComponent(location.hash.slice(3)); LS.set("cfg", c);
   history.replaceState(null, "", location.pathname);
-  setTimeout(() => { toast("Passphrase saved. Add a GitHub token in ⚙ to sync."); }, 1500);
+  setTimeout(() => toast("Passphrase saved. Add a GitHub token in ⚙ to sync."), 1500);
 }
 renderPrefs();
-load().then(() => {
-  if (mode && mode.type === "topic" && !mode.ids) mode = null;
-  renderPill(); next(); sync();
-}).catch(e => { $("#wait").textContent = "Couldn’t load the feed yet. The first cloud run may still be going."; console.error(e); });
+load().then(async () => {
+  await Promise.race([pullState(), new Promise(r => setTimeout(r, 2500))]);    // don't hold playback for a slow network
+  // pick up where you left off (this device or another), most recent first
+  const resume = Object.entries(progress).filter(([id]) => !seen.has(id) && !ratings[id]).sort((a, b) => b[1].ts - a[1].ts)[0];
+  if (resume && resume[1].t) {
+    const [id, p] = resume, row = D.byId.get(id) || { id, title: p.t, channel: p.c, dur: p.d, topic: "", p: 0, kind: "t" };
+    $("#wait").textContent = ""; play(row, Math.max(0, p.pos - 3)); S.secs = 10; fill(); toast("Continuing where you left off");
+  } else advance();
+  sync();
+}).catch(e => { $("#wait").textContent = "Couldn’t load the feed. Check your connection and reload."; console.error(e); });
 </script>
 </body>
 </html>

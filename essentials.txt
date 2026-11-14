@@ -1,0 +1,36 @@
+# "Must watch" sources: well-regarded educational / artistic channels, by topic.
+# One per line:  @handle | Topic     Their most popular + recent videos feed the 1-in-5 "essential" slot.
+# Edit freely (picked up on the next cloud run). Lines starting with # are ignored.
+@3blue1brown | Math
+@numberphile | Math
+@TheRoyalInstitution | Physics
+@WorldScienceFestival | Physics
+@minutephysics | Physics
+@domainofscience | Physics
+@pbsspacetime | Space
+@NileRed | Chemistry
+@periodicvideos | Chemistry
+@journeytomicro | Biology
+@eons | Biology
+@smartereveryday | Technology
+@PracticalEngineeringChannel | Technology
+@RealEngineering | Technology
+@FallofCivilizations | History
+@HistoriaCivilis | History
+@toldinstone | History
+@ThenNow | Philosophy
+@WirelessPhilosophy | Philosophy
+@academyofideas | Philosophy
+@NativLang | Humanities
+@ReligionForBreakfast | Humanities
+@CGPGrey | Humanities
+@Nerdwriter1 | Art
+@GreatArtExplained | Art
+@everyframeapainting | Art
+@AdamNeely | Art
+@12tone | Art
+@PolyMatter | Economics
+@Wendoverproductions | Economics
+@CaspianReport | Geopolitics
+@BenFelixCSI | Finance
+@PBoyle | Finance

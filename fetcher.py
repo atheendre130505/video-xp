@@ -2,6 +2,7 @@
 
 One request returns a whole page of videos (title, length, channel, views):
     - every channel in subscriptions.txt (whole catalogue the first time, newest uploads afterwards)
+    - the "must watch" channels in essentials.txt
     - searches across the categories below
     - more like whatever you keep watching (similar search + that channel's uploads)
 """
@@ -40,6 +41,22 @@ CATEGORIES = {   # queries chosen to find documentaries / explainers, not school
 CURRICULUM = re.compile(r"\b(class\s*\d{1,2}|std\s*\d{1,2}|grade\s*\d{1,2}|ncert|cbse|icse|jee|neet|upsc|ssc|"
                         r"board exams?|one shot|chapter\s*\d+|lecture\s*\d+|ch[\s.-]*\d+|for kids|exam|syllabus|"
                         r"revision|gcse|a[ -]level|ap (physics|chemistry|biology)|mcqs?|pyqs?)\b", re.I)
+CLICKBAIT = re.compile(r"(!!+|\?\?+|(shocking|insane|you won'?t believe|gone wrong|destroy(s|ed)|exposed|"
+                       r"mind[- ]?blow\w*|secret they|nobody tells|will blow|must see|omg|wtf)|[🌀-🫿])", re.I)
+
+
+def clickbait(title):
+    t = title or ""
+    letters = [c for c in t if c.isalpha()]
+    caps = sum(c.isupper() for c in letters) / len(letters) if len(letters) >= 12 else 0
+    return bool(CLICKBAIT.search(t)) or caps > 0.6
+
+
+def filler(r):
+    """Background / sleep content: fine to exist, but not for the essential or explore slots."""
+    return bool(re.search(r"(sleep\w*|asmr|relax\w*|ambience|lofi|white noise)", f"{r.get('title')} {r.get('channel')}", re.I))
+
+
 SUBSCRIPTIONS_FILE = Path(__file__).with_name("subscriptions.txt")
 SUB_LATEST = 600            # first crawl of a subscribed channel: newest videos …
 SUB_POPULAR = 300           # … plus its most popular ones (covers huge channels without listing 100k videos)
@@ -102,19 +119,35 @@ def subscriptions():
     return out
 
 
-def crawl_subscription(url):
+def essentials():
+    """(channel URL, topic) pairs from essentials.txt."""
+    out = []
+    f = Path(__file__).with_name("essentials.txt")
+    if f.exists():
+        for line in f.read_text(encoding="utf-8").splitlines():
+            s = line.split("#", 1)[0].strip()
+            if "|" in s:
+                h, topic = (x.strip() for x in s.split("|", 1))
+                out.append((h if h.startswith("http") else f"https://www.youtube.com/{h}", topic))
+    return out
+
+
+def crawl_channel(url, topic=None, source="sub", latest=SUB_LATEST, popular=SUB_POPULAR):
+    """Whole catalogue the first time (newest `latest` + most popular `popular`), newest uploads afterwards.
+    topic=None files the videos under the channel's own name (subscriptions)."""
     url = url.rstrip("/")
-    first = not db.searched("sub", url)
-    res = _flat(url + "/videos", SUB_LATEST if first else SUB_REFRESH)
+    first = not db.searched(source, url)
+    res = _flat(url + "/videos", latest if first else SUB_REFRESH)
     if not res:
         return 0
     name = res.get("channel") or res.get("uploader") or url
-    n = _store(res.get("entries") or [], name, "sub", channel=name, channel_url=url)
+    n = _store(res.get("entries") or [], topic or name, source, channel=name, channel_url=url)
     if first and res.get("channel_id"):
         time.sleep(2)
-        pop = _flat(f"https://www.youtube.com/playlist?list=UULP{res['channel_id'][2:]}", SUB_POPULAR)
+        pop = _flat(f"https://www.youtube.com/playlist?list=UULP{res['channel_id'][2:]}", popular)
         if pop:
-            n += _store(pop.get("entries") or [], name, "sub", channel=name, channel_url=url)
-    db.mark_searched("sub", url)
-    db.kv_set("subname:" + url, name)
+            n += _store(pop.get("entries") or [], topic or name, source, channel=name, channel_url=url)
+    db.mark_searched(source, url)
+    if source == "sub":
+        db.kv_set("subname:" + url, name)
     return n

@@ -21,14 +21,17 @@ CREATE TABLE IF NOT EXISTS videos (
     embeddable INTEGER DEFAULT 1,
     enriched INTEGER DEFAULT 0,  -- full lookup: 0 not yet, 2 running, 1 done, -1 failed/unavailable
     priority INTEGER DEFAULT 0,  -- lookup workers only take priority >= 1 (set by the model for its top picks)
-    source TEXT,                 -- sub (subscribed channel) | seed (category search) | hist_channel | expand
+    source TEXT,                 -- sub (subscribed channel) | essential | seed (category search) | expand
     added_at REAL,
     enriched_at REAL,
     p_watch REAL,                -- model: predicted share of the video you'd watch
     scored_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_videos_queue ON videos(enriched, priority);
-CREATE TABLE IF NOT EXISTS events (video_id TEXT, topic TEXT, watched REAL, duration REAL, liked INTEGER, ts REAL);
+-- one row per report from a device. liked: 1 good, -1 not good, NULL = no reaction yet (in progress).
+-- soft = 1 when the -1 came from moving on within 10 s. pos = where playback was (seconds), for resuming.
+CREATE TABLE IF NOT EXISTS events (video_id TEXT, topic TEXT, watched REAL, duration REAL, liked INTEGER, ts REAL,
+                                   pos REAL, soft INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS history (video_id TEXT, title TEXT, channel TEXT, channel_url TEXT, ts TEXT,
                                     PRIMARY KEY (video_id, ts));
 CREATE TABLE IF NOT EXISTS emb (id TEXT PRIMARY KEY, vec BLOB);          -- title|channel embedding (float32)
@@ -53,6 +56,10 @@ def init():
     with conn() as c:
         c.executescript(SCHEMA)
         _cleanup(c)
+        ecols = {r["name"] for r in c.execute("PRAGMA table_info(events)")}
+        for col, typ in (("pos", "REAL"), ("soft", "INTEGER DEFAULT 0")):
+            if col not in ecols:
+                c.execute(f"ALTER TABLE events ADD COLUMN {col} {typ}")
         c.execute("UPDATE videos SET enriched=0 WHERE enriched=2")      # lookups interrupted by a restart
 
 
@@ -63,7 +70,7 @@ def _cleanup(c):
         return
     for t in OLD_TABLES:
         c.execute(f"DROP TABLE IF EXISTS {t}")
-    c.execute("""DELETE FROM videos WHERE source NOT IN ('search','seed','expand','channel','hist_channel','sub')
+    c.execute("""DELETE FROM videos WHERE source NOT IN ('search','seed','expand','channel','hist_channel','sub','essential')
                  AND id NOT IN (SELECT video_id FROM events)""")
     c.execute("UPDATE videos SET source='seed' WHERE source='search'")
     for col in [r["name"] for r in c.execute("PRAGMA table_info(videos)")]:
@@ -130,8 +137,11 @@ def video(vid):
     return r[0] if r else None
 
 
-def add_event(vid, watched, duration, liked):
-    x("INSERT INTO events VALUES (?,?,?,?,?,?)", (vid, "", watched, duration, liked, time.time()))
+def add_events(batch):
+    with conn() as c:
+        c.executemany("INSERT INTO events (video_id, topic, watched, duration, liked, ts, pos, soft) VALUES (?,'',?,?,?,?,?,?)",
+                      [(e["id"], float(e.get("watched") or 0), float(e.get("duration") or 0), e.get("liked"),
+                        float(e.get("ts") or time.time()), e.get("pos"), int(bool(e.get("soft")))) for e in batch])
 
 
 def events():

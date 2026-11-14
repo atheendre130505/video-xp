@@ -1,36 +1,48 @@
 # Video XP
 
-A reels-style YouTube feed: it plays, you keep watching or move on, and a small neural network learns
-what you'll keep watching. No choosing, no playlists.
+YouTube and Instagram recommend for watch time, which favours drama and clickbait. Video XP recommends for
+**your judgement**: it plays a video, you say **good** or **not good**, and it learns. No choosing, no search.
 
 **Open it:** https://atheendre130505.github.io/video-xp/ (phone or PC; `start.bat` / `Video XP.url` open the same page)
 
-## Controls
+## Using it
 | | Desktop | Phone |
 |---|---|---|
-| next / back | → / ← | swipe up / down |
+| good / not good | G / B (or move the mouse → 👍 👎) | tap → 👍 👎 |
+| next | → : asks for your reaction first | swipe up |
+| back | ← | swipe down |
 | pause | click, Space | tap |
-| 👍 👎, CC, speed | move the mouse · L / D / C / [ ] | tap the screen |
-| only a topic or a channel | 🔍 or `/`, type, Enter | 🔍 |
-| back to your feed | ✕ on the pill · Esc | ✕ on the pill |
+| captions, speed | C, [ ] | tap → CC, 1× |
 
-## How it works
-GitHub Actions runs every 6 hours (and shortly after a device uploads watch data):
-1. **Candidates** (yt-dlp page listings, no API key): every video of the channels in `subscriptions.txt`,
-   rotating searches across 16 categories, and more of whatever you keep watching. School/exam videos are dropped.
-2. **Features** (SQLite): title+channel embedding (MiniLM), length, views, your affinity to the channel,
-   whether you're subscribed, similarity to what you kept watching / skipped.
-3. **Model:** an MLP predicting how much of a video you'll watch (👍/👎 count double).
-4. **Publish:** the ranked feed + a compact catalog go to GitHub Pages. The app re-ranks as you watch and
-   syncs encrypted watch data back.
+- A video never advances on its own. Moving on **within 10 seconds** counts as a soft "not good".
+- Anything you reacted to is never shown again (it stays in the database for learning).
+- Close the app mid-video and it resumes there, on any synced device.
+
+## What plays
+Every 5 videos: **3 for your taste**, **1 essential** (must-watch channels from `essentials.txt`, rotating through the
+topics you've seen least), **1 explore** (a channel you've never been shown).
+
+## How it learns (GitHub Actions, every 6 h and shortly after you react)
+1. **Candidates** (yt-dlp page listings, no API key): channels in `subscriptions.txt` and `essentials.txt`,
+   searches across 16 categories, and more like what you called good. School/exam videos are dropped;
+   shouting titles are kept out of the essential and explore slots.
+2. **NLP model:** every title+channel is embedded with all-MiniLM-L6-v2 (a small pretrained language model),
+   so "Japanese joinery" sits near "Swiss watchmaking" without shared tags.
+3. **Taste vector:** the average direction of what you called good, pushed away from not good and fast skips.
+   Ranking uses closeness to it; the app also nudges it instantly on your device after every reaction.
+4. **Deep model:** an MLP on the embedding + video numbers + your reactions per channel, trained on your
+   reactions once there are 20+. Before that, a simple prior (subscriptions, essentials, popularity).
+
+Not used: watch time as a goal, your old YouTube history (only to avoid repeats), transcripts/descriptions
+(they need per-video requests that YouTube blocks from cloud servers).
 
 ## Privacy
-This repo is public. The database, imported history and watch data exist here **only encrypted**
-(AES-256-GCM) on the `data` branch. The published site holds the video catalog, not your history.
+This repo is public. The database, reactions, taste vector and resume points exist here **only encrypted**
+(AES-256-GCM). The public feed is a list of candidate videos, not what you watched.
 `subscriptions.txt` is public; delete lines you'd rather not show.
 
-## Syncing a device (optional, once per device)
-Without this the app still works and adapts on the device; with it the cloud model learns from that device.
+## Syncing a device (once per device)
+Without it the app works but only learns on that device. With it, the cloud model learns and devices stay in step.
 1. Open the `SETUP_LINK` from your local `cloud.env` on the device (stores the passphrase there).
 2. In the app: ⚙ → paste a fine-grained GitHub token (this repo only, *Contents: Read and write*),
    made at https://github.com/settings/personal-access-tokens/new
