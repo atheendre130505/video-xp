@@ -44,13 +44,13 @@ topics you've seen least), **1 explore** (a channel you've never been shown).
 Not used: watch time as a goal, your old YouTube history (only to avoid repeats), transcripts/descriptions
 (they need per-video requests that YouTube blocks from cloud servers).
 
-## Privacy
-This repo is public. The database, reactions, taste vector and resume points exist here **only encrypted**
-(AES-256-GCM). The public feed is a list of candidate videos, not what you watched.
-`subscriptions.txt` is public; delete lines you'd rather not show.
+## Devices stay in step (no setup)
+Every device posts what you do (watched to X seconds / good / not good, by video id) to a shared relay
+(ntfy.sh) and reads it back when it opens or when you return to it, so phone and laptop continue the same
+video. The cloud reads the relay hourly, retrains, and publishes `state.json` (every video you rated, your
+taste vector, unfinished videos).
 
-## Syncing a device (once per device)
-Without it the app works but only learns on that device. With it, the cloud model learns and devices stay in step.
-1. Open the `SETUP_LINK` from your local `cloud.env` on the device (stores the passphrase there).
-2. In the app: ⚙ → paste a fine-grained GitHub token (this repo only, *Contents: Read and write*),
-   made at https://github.com/settings/personal-access-tokens/new
+## Privacy
+The relay and `state.json` hold video ids and positions only (no name, no account), but they are not
+encrypted: someone who found the relay address in the page could see which videos you rated.
+The full database lives encrypted (AES-256-GCM) on the `data` branch. `subscriptions.txt` is public.

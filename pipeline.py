@@ -4,13 +4,14 @@
 
 DATA_DIR is a checkout of the repo's `data` branch:
     videoxp.db.enc      the whole database, encrypted (crypto_box) with VXP_PASSPHRASE
-    events/*.json       reactions / progress your devices uploaded (encrypted the same way, in the browser)
+Your devices post what you did (watched to X s / good / not good, by video id) to a keyless relay (RELAY);
+each run reads what's new there. The relay keeps messages 12 hours and the workflow runs hourly.
 SITE_DIR receives the GitHub Pages site:
     index.html          the app
-    feed.json           what to play next: three pools (taste / essential / explore) with their vectors (public)
-    state.enc           your side of it, encrypted: taste vector + videos you left unfinished (for every device)
+    feed.json           what to play next: three pools (taste / essential / explore) with their vectors
+    state.json          every video you rated + your taste vector + unfinished videos (read by all devices)
 
---quick (a device uploaded reactions and sent a "watch-data" repository_dispatch): skip the big crawl.
+--quick: skip the big crawl (it runs at most every FULL_CRAWL_HOURS).
 """
 import argparse, base64, glob, json, logging, os, random, shutil, sys, tempfile, time
 from collections import defaultdict
@@ -30,6 +31,8 @@ CRAWL_MINUTES = 25        # crawling stops after this long; training always gets
 PCA_DIM = 128             # app vectors: 384-d MiniLM embeddings projected to 128-d
 # how far each reaction moves the taste vector (rushed = watched at ~2x or kept skipping ahead)
 W_GOOD, W_RUSHED_GOOD, W_BAD, W_SOFT = 1.0, 0.4, -0.7, -0.35
+RELAY = "https://ntfy.sh/vxp-6a706fa3aaeeab939c2b3a5e"     # same as in site/index.html
+FULL_CRAWL_HOURS = 6
 
 
 def main():
@@ -52,12 +55,17 @@ def main():
     db.init()
 
     processed = ingest_events(data, pw)
+    ingest_relay()
+    full_due = time.time() - float(db.kv_get("last_full_crawl", 0)) > FULL_CRAWL_HOURS * 3600 - 600
+    quick = a.quick or not full_due
     try:
-        crawl(a.quick)
+        crawl(quick)
+        if not quick:
+            db.kv_set("last_full_crawl", time.time())
     except Exception:
         log.exception("crawl failed; continuing with the videos we have")
     model.train_and_score()
-    export_site(site, pw)
+    export_site(site)
 
     db.vacuum()
     crypto_box.encrypt_file(work / "videoxp.db", enc, pw)
@@ -81,6 +89,33 @@ def ingest_events(data, pw):
         n += len(batch)
     log.info("ingested %d events from %d uploads", n, len(files))
     return [Path(f) for f in files]
+
+
+def ingest_relay():
+    """What your devices posted since the last run (watched to X s / good / not good)."""
+    import urllib.request, db
+    since = db.kv_get("relay_since") or "12h"
+    try:
+        with urllib.request.urlopen(f"{RELAY}/json?poll=1&since={since}", timeout=30) as r:
+            lines = r.read().decode("utf-8").splitlines()
+    except Exception as ex:
+        log.warning("relay not reachable (%s); next run will catch up", ex)
+        return
+    n, last = 0, None
+    for line in lines:
+        try:
+            m = json.loads(line)
+            if m.get("event") != "message":
+                continue
+            last = m["id"]
+            events = [e for e in json.loads(m["message"]).get("events", []) if isinstance(e, dict) and e.get("id")]
+        except Exception:
+            continue
+        db.add_events(events)
+        n += len(events)
+    if last:
+        db.kv_set("relay_since", last)
+    log.info("relay: %d events from %d messages", n, len(lines))
 
 
 # ---------------- crawling (yt-dlp page listings) ----------------
@@ -139,9 +174,9 @@ def crawl(quick):
 
 
 # ---------------- what the app downloads ----------------
-def export_site(site, pw):
+def export_site(site):
     import numpy as np
-    import db, model, fetcher, crypto_box
+    import db, model, fetcher
     rows = db.q("""SELECT id, topic, source, title, channel, duration, views, p_watch FROM videos
                    WHERE embeddable=1 AND enriched != -1 AND p_watch IS NOT NULL AND title IS NOT NULL
                    AND id NOT IN (SELECT video_id FROM events) AND id NOT IN (SELECT video_id FROM history)""")
@@ -229,7 +264,7 @@ def export_site(site, pw):
         shutil.copy(ROOT / "site" / name, site / name)
     (site / "feed.json").write_text(json.dumps(feed, separators=(",", ":")), encoding="utf-8")
 
-    # private state for all your devices: taste vector + what you left unfinished (resume point)
+    # state for all your devices: what you rated (never shown again), taste vector, unfinished videos
     last = {}
     for e in db.events():
         last[e["video_id"]] = e                               # oldest first -> latest wins
@@ -239,9 +274,10 @@ def export_site(site, pw):
                 for vid, e in last.items()
                 if vid not in reacted and vid in ev_rows and e.get("pos") and (e["ts"] or 0) > cutoff]
     progress.sort(key=lambda p: -p["ts"])
-    state = {"generated": gen, "taste": [round(float(x), 4) for x in taste],
+    rated = [r["video_id"] for r in db.q("SELECT DISTINCT video_id FROM events WHERE liked IS NOT NULL")]
+    state = {"generated": gen, "taste": [round(float(x), 4) for x in taste], "rated": rated,
              "progress": progress[:10], "reactions": len(reacted)}
-    (site / "state.enc").write_bytes(crypto_box.encrypt(json.dumps(state).encode(), pw))
+    (site / "state.json").write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
     kinds = defaultdict(int)
     for k in chosen.values():
         kinds[k] += 1

@@ -2,7 +2,7 @@ name: video-xp
 
 on:
   schedule:
-    - cron: "17 */6 * * *"          # every 6 hours: crawl + retrain + publish
+    - cron: "17 * * * *"            # hourly: read your devices' activity, retrain, publish (big crawl every 6 h)
   workflow_dispatch: {}
   repository_dispatch:              # your phone uploaded watch data -> quick retrain
     types: [watch-data]

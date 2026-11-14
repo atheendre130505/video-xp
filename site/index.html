@@ -19,20 +19,21 @@
   .ctl { position:fixed; z-index:3; opacity:0; transition:opacity .25s; pointer-events:none; }
   .ctl.show { opacity:1; pointer-events:auto; }
   #rail { right:22px; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:14px; }
-  #rail button, #ask button { border:0; background:rgba(20,20,20,.7); color:#eee; cursor:pointer; backdrop-filter:blur(6px);
+  #rail button { border:0; background:rgba(20,20,20,.7); color:#eee; cursor:pointer; backdrop-filter:blur(6px);
                  transition:transform .1s, background .15s; }
   #rail button { width:60px; height:60px; border-radius:50%; font-size:26px; }
-  #rail button:hover, #ask button:hover { transform:scale(1.06); }
+  #rail button:hover { transform:scale(1.06); }
   #rail button.txt { font:700 15px system-ui, sans-serif; }
   #rail button.on { background:#eee; color:#111; }
   #rail button.on.good { background:var(--good); } #rail button.on.bad { background:var(--bad); }
-  /* "good or not good?" prompt: shown when you try to move on, or the video ends, without reacting */
-  #ask { left:50%; bottom:12%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:12px;
-         background:rgba(10,10,12,.82); padding:16px 20px; border-radius:18px; backdrop-filter:blur(8px); }
-  #ask div { font-weight:600; }
-  #ask span { display:flex; gap:12px; }
-  #ask button { font:700 17px system-ui, sans-serif; padding:14px 24px; border-radius:999px; }
-  #ask .good { background:var(--good); color:#06210c; } #ask .bad { background:var(--bad); color:#2b0705; }
+  /* "good or not good?" — asked on the side buttons themselves, never over the middle of the video */
+  #rail.asking .good { background:var(--good); animation:pulse 1.4s infinite; }
+  #rail.asking .bad { background:var(--bad); animation:pulse 1.4s infinite .7s; }
+  @keyframes pulse { 50% { transform:scale(1.12); } }
+  #asklabel { position:fixed; right:96px; top:50%; transform:translateY(-50%); z-index:3; display:none; padding:8px 12px; border-radius:12px;
+              background:rgba(10,10,12,.8); font-weight:600; font-size:14px; pointer-events:none; text-align:right; }
+  #rail.asking ~ #asklabel { display:block; }
+  @media (pointer: coarse) { #rail.asking ~ #asklabel { display:none; } }   /* phones: the pulsing buttons alone */
   body.ad #player, body.ad #player iframe { top:0; height:100dvh; }
   body.ad #layer { pointer-events:none; }
   #adpill { position:fixed; left:16px; top:16px; z-index:7; display:none; padding:8px 14px; border-radius:999px; font-weight:700;
@@ -65,21 +66,11 @@
   <button class="bad" id="bad" title="Not good (B)">👎</button>
   <button class="txt" id="cc" title="Captions (C)">CC</button>
   <button class="txt" id="speed" title="Speed: ] faster, [ slower">1×</button>
-  <button id="gear" title="Sync">⚙</button>
 </div>
-<div class="ctl" id="ask"><div>Was this a good recommendation?</div><span><button class="good" id="askGood">👍 Good</button><button class="bad" id="askBad">👎 Not good</button></span></div>
+<div id="asklabel">Good recommendation?<br>tap 👍 or 👎</div>
 <div id="adpill">Ad · use YouTube’s “Skip” button in the video</div>
 <div id="toast"></div>
 
-<div class="sheet" id="setSheet"><div class="box">
-  <h3 style="margin:0 0 4px">Sync</h3>
-  <div class="hint">Sends your reactions to the cloud model and keeps your devices in step. Stored only on this device.</div>
-  <label>Passphrase</label><input id="sPass" type="password" autocomplete="off">
-  <label>GitHub token (fine-grained, this repo only, Contents: read &amp; write)</label><input id="sTok" type="password" autocomplete="off">
-  <label>Repository</label><input id="sRepo" placeholder="owner/repo">
-  <div class="row" style="margin-top:14px"><button class="btn pri" id="sSave">Save</button><button class="btn" id="sSync">Sync now</button><button class="btn" id="sClose" style="margin-left:auto">Close</button></div>
-  <div class="hint" id="sStat" style="margin-top:10px"></div>
-</div></div>
 
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
@@ -95,6 +86,9 @@ const seen = new Set(LS.get("seen", []));              // reacted to (never show
 let ratings = LS.get("ratings", {});                   // id -> {w, ts}: reactions made on this device
 let progress = LS.get("progress", {});                 // id -> {pos, ts, t, c, d}: unfinished videos (resume point)
 let cloud = LS.get("cloud", { generated: 0, taste: null });
+const RELAY = "https://ntfy.sh/vxp-6a706fa3aaeeab939c2b3a5e";       // shared, keyless relay: watched / good / not good, by video id
+const DEV = LS.get("dev", null) || (() => { const d = Math.random().toString(36).slice(2, 10); LS.set("dev", d); return d; })();
+let lastLocal = LS.get("lastLocal", 0);                // last time you did something on this device
 let stats = LS.get("stats", { n: 0, topics: {}, channels: {} });
 let S = { queue: [], played: [], cur: null, watched: 0, secs: 0, fast: 0, skips: 0, activated: false, applied: null, ended: false };
 // rushed = you hurried through it: mostly at ~2x, or kept jumping ahead. A weaker "good"; a soft dislike if you never react.
@@ -238,7 +232,8 @@ setInterval(() => {
   const ad = adPlaying();
   document.body.classList.toggle("ad", ad);
   if (ad) return;                                       // ad time is not watch time
-  if (player && player.getPlayerState && player.getPlayerState() === 1) { skipSponsor(); const rate = player.getPlaybackRate() || 1; S.secs += 1; S.watched += rate; if (rate >= 1.75) S.fast += 1; if (S.secs % 15 === 0) saveProgress(); }
+  if (player && player.getPlayerState && player.getPlayerState() === 1) { skipSponsor(); const rate = player.getPlaybackRate() || 1; S.secs += 1; S.watched += rate; if (rate >= 1.75) S.fast += 1;
+    if (S.secs === 3) saveProgress(true); else if (S.secs % 15 === 0) saveProgress(); }
 }, 1000);
 
 // ---------------- reactions + progress: stored here, synced to the cloud ----------------
@@ -258,16 +253,19 @@ function react(x) {
   delete progress[v.id]; LS.set("progress", progress);
   stats.n += 1; stats.topics[v.topic] = (stats.topics[v.topic] || 0) + 1; stats.channels[v.channel] = (stats.channels[v.channel] || 0) + 1; LS.set("stats", stats);
   queueEvent({ id: v.id, liked: x > 0 ? 1 : -1, soft: soft ? 1 : 0, watched: Math.round(S.watched), pos: pos(), duration: dur(), ts: now() });
+  touch_();
   S.queue = [];                                         // re-pick with the updated taste
   advance(); syncSoon();
 }
 function saveProgress(final = false) {
   const v = S.cur;
-  if (!v || ratings[v.id] || seen.has(v.id) || S.secs < 10) return;
+  if (!v || ratings[v.id] || seen.has(v.id) || S.secs < 3) return;
   const p = pos(); if (!p) return;
+  touch_();
   const soft = rushed() ? 1 : 0;                        // rushed and never reacted = soft dislike (not resumed later)
   progress[v.id] = { pos: p, ts: now(), t: v.title, c: v.channel, d: v.dur || dur(), soft }; LS.set("progress", progress);
-  queueEvent({ id: v.id, liked: null, soft, watched: Math.round(S.watched), pos: p, duration: dur(), ts: now() });
+  queueEvent({ id: v.id, liked: null, soft, watched: Math.round(S.watched), pos: p, duration: dur(), ts: now(),
+               t: v.title, c: v.channel, g: v.topic });
   if (final) syncSoon();
 }
 // leaving (another tab, another app, screen off): pause, remember the position, sync it right away so another
@@ -278,8 +276,8 @@ function away() {
   saveProgress(); sync(true);
 }
 function returned() {
-  if (autoPaused && player && player.playVideo && !sheetOpen()) player.playVideo();
-  autoPaused = false;
+  const resumeHere = autoPaused; autoPaused = false;
+  pull().then(switched => { if (!switched && resumeHere && player && player.playVideo) player.playVideo(); });
 }
 document.addEventListener("visibilitychange", () => { document.visibilityState === "hidden" ? away() : returned(); });
 // switching to another window on a PC doesn't hide the tab, so also watch focus. Clicking inside the video itself
@@ -287,82 +285,86 @@ document.addEventListener("visibilitychange", () => { document.visibilityState =
 window.addEventListener("blur", () => setTimeout(() => { if (!document.hasFocus() && document.activeElement?.tagName !== "IFRAME") away(); }, 0));
 window.addEventListener("focus", returned);
 
-function ask() { $("#ask").classList.add("show"); showControls(60000); }
-function hideAsk() { $("#ask").classList.remove("show"); }
+function ask() { $("#rail").classList.add("asking"); showControls(600000); }
+function hideAsk() { $("#rail").classList.remove("asking"); }
 
-// ---------------- sync (GitHub: encrypted files on the data branch) ----------------
-const cfg = () => LS.get("cfg", { pass: "", token: "", repo: guessRepo() });
-function guessRepo() { const owner = location.hostname.split(".")[0], repo = location.pathname.split("/").filter(Boolean)[0]; return location.hostname.endsWith("github.io") && repo ? `${owner}/${repo}` : ""; }
-const b64 = buf => { let s = ""; const a = new Uint8Array(buf); for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); return btoa(s); };
-const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-async function key(pass, salt, use) {                 // same format as crypto_box.py: AES-256-GCM, PBKDF2-SHA256 200k
-  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, [use]);
-}
-async function encrypt(text, pass) {
-  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await key(pass, salt, "encrypt"), new TextEncoder().encode(text));
-  return JSON.stringify({ v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct) });
-}
-async function decrypt(blob, pass) {
-  const d = typeof blob === "string" ? JSON.parse(blob) : blob;
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(d.iv) }, await key(pass, unb64(d.salt), "decrypt"), unb64(d.ct));
-  return new TextDecoder().decode(pt);
-}
+// ---------------- sync: one shared relay, no setup ----------------
+// Every device posts what you did (by video id) to the relay and reads it back. The cloud reads it every hour,
+// retrains, and publishes state.json (everything you rated + your taste). Nothing else is sent: no name, no account.
+function touch_() { lastLocal = now(); LS.set("lastLocal", lastLocal); }
 let syncing = false, syncT;
-function syncSoon() { clearTimeout(syncT); syncT = setTimeout(sync, 2500); }
+function syncSoon() { clearTimeout(syncT); syncT = setTimeout(sync, 1500); }
 async function sync(leaving = false) {
-  const c = cfg(), q = LS.get("outbox", []);
-  if (syncing || !q.length || !c.pass || !c.token || !c.repo) return;
+  const q = LS.get("outbox", []);
+  if (syncing || !q.length) return;
   syncing = true;
   try {
-    const body = await encrypt(JSON.stringify({ events: q }), c.pass);
-    const name = `events/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`;
-    const H = { Authorization: `Bearer ${c.token}`, Accept: "application/vnd.github+json" };
-    const r = await fetch(`https://api.github.com/repos/${c.repo}/contents/${name}`, { method: "PUT", keepalive: leaving, headers: H,
-      body: JSON.stringify({ message: "reactions", content: btoa(body), branch: "data" }) });
-    if (!r.ok) throw new Error(`GitHub ${r.status}`);
+    for (let i = 0; i < q.length; i += 15) {          // relay messages are capped at 4 KB
+      const r = await fetch(RELAY, { method: "POST", keepalive: leaving, body: JSON.stringify({ dev: DEV, events: q.slice(i, i + 15) }) });
+      if (!r.ok) throw new Error(`relay ${r.status}`);
+    }
     const sent = new Set(q.map(e => e.id + ":" + e.ts));
     LS.set("outbox", LS.get("outbox", []).filter(e => !sent.has(e.id + ":" + e.ts)));
-    for (const e of q) if (e.liked != null && ratings[e.id]) ratings[e.id].synced = 1;
-    LS.set("ratings", ratings); LS.set("lastSync", Date.now()); LS.set("syncErr", "");
-    // ask the cloud to retrain (at most every 15 min, and only when there are new reactions)
-    if (q.some(e => e.liked != null) && Date.now() - LS.get("lastDispatch", 0) > 15 * 60e3) {
-      const d = await fetch(`https://api.github.com/repos/${c.repo}/dispatches`, { method: "POST", keepalive: leaving, headers: H,
-        body: JSON.stringify({ event_type: "watch-data" }) });
-      if (d.ok) LS.set("lastDispatch", Date.now());
-    }
-  } catch (e) { LS.set("syncErr", String(e.message || e)); }
+    LS.set("lastSync", Date.now());
+  } catch (e) { console.warn("sync failed, will retry", e); }
   finally { syncing = false; }
 }
+setInterval(() => { if (LS.get("outbox", []).length) sync(); }, 60000);
 
-// what your other devices did: the cloud's state file + uploads the cloud hasn't processed yet
-async function pullState() {
-  const c = cfg(); if (!c.pass) return;
+function applyEvent(e, remote) {
+  if (e.liked != null) {
+    seen.add(e.id); delete progress[e.id];
+    if (!ratings[e.id]) ratings[e.id] = { w: e.liked > 0 ? (e.soft ? 0.4 : 1) : -0.7, ts: e.ts, synced: 1 };
+  } else mergeProgress(e.id, { pos: e.pos, ts: e.ts, t: e.t, c: e.c, d: e.duration, g: e.g, soft: e.soft });
+}
+function saveAll() { LS.set("seen", [...seen].slice(-8000)); LS.set("ratings", ratings); LS.set("progress", progress); }
+
+// what happened on your other devices: the cloud's hourly state + the relay's last 12 hours.
+// If another device did something more recent than this one, open what it was watching.
+async function pull() {
+  let newest = null;
   try {
-    const st = JSON.parse(await decrypt(await fetch("state.enc", { cache: "no-cache" }).then(r => r.text()), c.pass));
-    cloud = { generated: st.generated, taste: st.taste }; LS.set("cloud", cloud);
-    for (const p of st.progress || []) mergeProgress(p.id, p);
-  } catch (e) { console.warn("state not readable (wrong passphrase?)", e); LS.set("syncErr", "can't read cloud state: check the passphrase"); }
-  if (!c.repo) return;
+    const st = await fetch("state.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null);
+    if (st) {
+      cloud = { generated: st.generated, taste: st.taste }; LS.set("cloud", cloud);
+      for (const id of st.rated || []) seen.add(id);
+      for (const pr of st.progress || []) mergeProgress(pr.id, pr);
+    }
+  } catch (e) { console.warn("state.json", e); }
   try {
-    const H = c.token ? { Authorization: `Bearer ${c.token}`, Accept: "application/vnd.github+json" } : { Accept: "application/vnd.github+json" };
-    const list = await fetch(`https://api.github.com/repos/${c.repo}/contents/events?ref=data`, { headers: H }).then(r => r.ok ? r.json() : []);
-    for (const f of list.filter(f => f.name.endsWith(".json")).slice(-25)) {
-      const blob = await fetch(f.download_url).then(r => r.text());
-      for (const e of JSON.parse(await decrypt(blob, c.pass)).events || []) {
-        if (e.liked != null) { seen.add(e.id); delete progress[e.id]; if (!ratings[e.id]) ratings[e.id] = { w: e.liked > 0 ? (e.soft ? 0.4 : 1) : -0.7, ts: e.ts, synced: 1 }; }
-        else mergeProgress(e.id, { pos: e.pos, ts: e.ts, d: e.duration, soft: e.soft });
+    const txt = await fetch(`${RELAY}/json?poll=1&since=12h`, { cache: "no-store" }).then(r => r.ok ? r.text() : "");
+    for (const line of txt.split("\n")) {
+      if (!line.trim()) continue;
+      let m; try { m = JSON.parse(line); } catch { continue; }
+      if (m.event !== "message") continue;
+      let b; try { b = JSON.parse(m.message); } catch { continue; }
+      for (const e of b.events || []) {
+        applyEvent(e, b.dev !== DEV);
+        if (b.dev !== DEV && (!newest || e.ts > newest.ts)) newest = e;
       }
     }
-    LS.set("seen", [...seen].slice(-8000)); LS.set("ratings", ratings); LS.set("progress", progress);
-  } catch (e) { console.warn("pending uploads not readable", e); }
+  } catch (e) { console.warn("relay", e); }
+  saveAll();
+  if (!newest || newest.ts <= lastLocal) return false;
+  // another device was used more recently than this one
+  if (newest.liked == null && !newest.soft && !seen.has(newest.id)) {
+    if (S.cur && S.cur.id === newest.id) { if (Math.abs(pos() - newest.pos) > 15) player.seekTo(newest.pos, true); return true; }
+    const p = progress[newest.id] || {};
+    const row = D.byId.get(newest.id) || { id: newest.id, title: newest.t || p.t || "", channel: newest.c || p.c || "", dur: newest.duration || p.d, topic: newest.g || "", p: 0, kind: "t" };
+    if (S.cur && !ratings[S.cur.id]) saveProgress();
+    if (S.cur) S.played.push(S.cur);
+    $("#wait").textContent = ""; play(row, Math.max(0, newest.pos - 3)); S.secs = 3; touch_(); fill();
+    toast("Continuing from your other device");
+    return true;
+  }
+  if (S.cur && seen.has(S.cur.id)) { S.queue = []; advance(); return true; }   // you rated this one elsewhere
+  return false;
 }
 function mergeProgress(id, p) {
   if (seen.has(id) || ratings[id] || !p.pos) return;
   const row = D.byId.get(id), old = progress[id];
-  if (!old || p.ts > old.ts) progress[id] = { pos: p.pos, ts: p.ts, t: p.t || old?.t || row?.title, c: p.c || old?.c || row?.channel, d: p.d || old?.d || row?.dur, soft: p.soft ? 1 : 0 };
-  LS.set("progress", progress);
+  if (!old || p.ts > old.ts) progress[id] = { pos: p.pos, ts: p.ts, t: p.t || old?.t || row?.title, c: p.c || old?.c || row?.channel,
+                                             d: p.d || old?.d || row?.dur, g: p.g || old?.g || row?.topic, soft: p.soft ? 1 : 0 };
 }
 
 // ---------------- captions + speed ----------------
@@ -379,18 +381,7 @@ function changeSpeed(dir) {
 function renderPrefs() { $("#cc").classList.toggle("on", pref.cc); $("#speed").textContent = pref.speed + "×"; $("#speed").classList.toggle("on", pref.speed !== 1); }
 let toastT; function toast(m) { $("#toast").textContent = m; $("#toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("#toast").classList.remove("show"), 1400); }
 
-// ---------------- settings ----------------
-const sheetOpen = () => $("#setSheet").classList.contains("open");
-function openSettings() {
-  const c = cfg(); $("#sPass").value = c.pass; $("#sTok").value = c.token; $("#sRepo").value = c.repo;
-  const q = LS.get("outbox", []), last = LS.get("lastSync", 0), err = LS.get("syncErr", "");
-  $("#sStat").textContent = `${Object.keys(ratings).length} reactions on this device · ${q.length} waiting to sync · last sync ${last ? new Date(last).toLocaleString() : "never"}${err ? " · " + err : ""}`;
-  $("#setSheet").classList.add("open");
-}
-$("#sSave").onclick = () => { LS.set("cfg", { pass: $("#sPass").value, token: $("#sTok").value.trim(), repo: $("#sRepo").value.trim() }); toast("Saved"); pullState().then(openSettings); };
-$("#sSync").onclick = async () => { await sync(); openSettings(); };
-$("#sClose").onclick = () => $("#setSheet").classList.remove("open");
-$("#setSheet").addEventListener("click", e => { if (e.target.id === "setSheet") $("#setSheet").classList.remove("open"); });
+const sheetOpen = () => false;
 
 // ---------------- input ----------------
 function activate() {
@@ -408,7 +399,6 @@ function toggleFullscreen() {
 }
 function togglePause() { autoPaused = false; if (!player || !player.getPlayerState) return; player.getPlayerState() === 1 ? player.pauseVideo() : player.playVideo(); }
 document.addEventListener("keydown", e => {
-  if (sheetOpen()) { if (e.key === "Escape") $("#setSheet").classList.remove("open"); return; }
   activate();
   const k = e.key.toLowerCase();
   if (k === "arrowright") { e.preventDefault(); seek(5); }
@@ -441,33 +431,29 @@ $("#layer").addEventListener("touchend", e => {
   touch = null; if (!swipe) return;
   e.preventDefault(); activate(); dy > 0 ? next() : back();
 });
-$("#good").onclick = $("#askGood").onclick = () => react(1);
-$("#bad").onclick = $("#askBad").onclick = () => react(-1);
-$("#cc").onclick = toggleCaptions; $("#speed").onclick = () => changeSpeed(0); $("#gear").onclick = openSettings;
+$("#good").onclick = () => react(1);
+$("#bad").onclick = () => react(-1);
+$("#cc").onclick = toggleCaptions; $("#speed").onclick = () => changeSpeed(0);
 
 let idle;
 function showControls(ms = 2200) {
   $("#rail").classList.add("show"); $("#layer").classList.add("awake");
-  clearTimeout(idle); idle = setTimeout(() => { if ($("#ask").classList.contains("show")) return; $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
+  clearTimeout(idle); idle = setTimeout(() => { if ($("#rail").classList.contains("asking")) return; $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
 }
 document.addEventListener("mousemove", e => { if (!e.sourceCapabilities || !e.sourceCapabilities.firesTouchEvents) showControls(); });
 document.addEventListener("touchstart", e => { if (e.target.closest(".ctl")) showControls(4000); }, { passive: true });
 
 // ---------------- start ----------------
-// setup link: …/video-xp/#p=<passphrase> stores the passphrase on this device (the part after # never leaves the browser)
-if (location.hash.startsWith("#p=")) {
-  const c = cfg(); c.pass = decodeURIComponent(location.hash.slice(3)); LS.set("cfg", c);
-  history.replaceState(null, "", location.pathname);
-  setTimeout(() => toast("Passphrase saved. Add a GitHub token in ⚙ to sync."), 1500);
-}
+if (location.hash) history.replaceState(null, "", location.pathname);    // old setup links: nothing to set up any more
 renderPrefs();
 load().then(async () => {
-  await Promise.race([pullState(), new Promise(r => setTimeout(r, 2500))]);    // don't hold playback for a slow network
-  // pick up where you left off (this device or another), most recent first
+  const switched = await Promise.race([pull(), new Promise(r => setTimeout(() => r(false), 3000))]);
+  if (switched) return;
+  // pick up where you left off on this device (or the most recent unfinished video anywhere)
   const resume = Object.entries(progress).filter(([id, p]) => !seen.has(id) && !ratings[id] && !p.soft).sort((a, b) => b[1].ts - a[1].ts)[0];
   if (resume && resume[1].t) {
-    const [id, p] = resume, row = D.byId.get(id) || { id, title: p.t, channel: p.c, dur: p.d, topic: "", p: 0, kind: "t" };
-    $("#wait").textContent = ""; play(row, Math.max(0, p.pos - 3)); S.secs = 10; fill(); toast("Continuing where you left off");
+    const [id, p] = resume, row = D.byId.get(id) || { id, title: p.t, channel: p.c, dur: p.d, topic: p.g || "", p: 0, kind: "t" };
+    $("#wait").textContent = ""; play(row, Math.max(0, p.pos - 3)); S.secs = 3; fill(); toast("Continuing where you left off");
   } else advance();
   sync();
 }).catch(e => { $("#wait").textContent = "Couldn’t load the feed. Check your connection and reload."; console.error(e); });
