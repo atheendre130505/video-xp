@@ -57,6 +57,19 @@ def filler(r):
     return bool(re.search(r"\b(sleep\w*|asmr|relax\w*|ambience|lofi|white noise)\b", f"{r.get('title')} {r.get('channel')}", re.I))
 
 
+PROMO = re.compile(r"(\b(official\s+)?(trailer|teaser|tv spot|commercial|promo|sneak peek|launch event)\b|"
+                   r"#ad\b|#sponsored|\b(introducing|unboxing|now available|pre-?order|giveaway|coming soon)\b|"
+                   r"\|\s*(apple|google|meta|samsung|marvel)\s*$)", re.I)
+BRAND_CHANNELS = {"Apple", "Google", "Facebook", "Marvel Entertainment", "Meta", "Samsung"}
+
+
+def promo(r):
+    """The video itself is advertising: trailers, product launches, brand channels' short spots. Kept out of the feed."""
+    if PROMO.search(r.get("title") or ""):
+        return True
+    return r.get("channel") in BRAND_CHANNELS and (r.get("duration") or 0) < 600
+
+
 SUBSCRIPTIONS_FILE = Path(__file__).with_name("subscriptions.txt")
 SUB_LATEST = 600            # first crawl of a subscribed channel: newest videos …
 SUB_POPULAR = 300           # … plus its most popular ones (covers huge channels without listing 100k videos)

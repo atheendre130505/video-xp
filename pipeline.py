@@ -145,6 +145,9 @@ def export_site(site, pw):
     rows = db.q("""SELECT id, topic, source, title, channel, duration, views, p_watch FROM videos
                    WHERE embeddable=1 AND enriched != -1 AND p_watch IS NOT NULL AND title IS NOT NULL
                    AND id NOT IN (SELECT video_id FROM events) AND id NOT IN (SELECT video_id FROM history)""")
+    n_all = len(rows)
+    rows = [r for r in rows if not fetcher.promo(r)]             # trailers, product promos: never in the feed
+    log.info("left out %d promo / trailer videos", n_all - len(rows))
     reacted = model.engagement_by_video()                     # id -> (1 | 0, {w, ts, soft})
     ev_rows = {r["id"]: r for r in db.q("""SELECT id, title, channel, duration FROM videos
                                            WHERE id IN (SELECT DISTINCT video_id FROM events)""")}
