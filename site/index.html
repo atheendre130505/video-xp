@@ -57,7 +57,6 @@
 <div class="ctl" id="rail">
   <button class="good" id="good" title="Good recommendation (G)">👍</button>
   <button class="bad" id="bad" title="Not good (B)">👎</button>
-  <button class="txt" id="cc" title="Captions (C)">CC</button>
   <button class="txt" id="fs" title="Full screen (F)">⛶</button>
 </div>
 <div id="adpill">Ad · use YouTube’s “Skip” button in the video</div>
@@ -176,7 +175,7 @@ function play(v, at = 0, paused = false) {
     if (player && player.loadVideoById) { player[paused ? "cueVideoById" : "loadVideoById"]({ videoId: v.id, startSeconds: at }); return; }
     player = new YT.Player("player", { videoId: v.id, host: "https://www.youtube-nocookie.com",
       playerVars: { autoplay: paused ? 0 : 1, mute: 1, controls: 0, disablekb: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, fs: 0,
-                    start: Math.floor(at), cc_load_policy: pref.cc ? 1 : 0, cc_lang_pref: "en" },
+                    start: Math.floor(at), cc_load_policy: 0 },
       events: {
         onReady: () => { if (S.activated) player.unMute(); },
         onStateChange: e => {
@@ -438,13 +437,14 @@ function mergeProgress(id, p) {
                                              d: p.d || old?.d || row?.dur, g: p.g || old?.g || row?.topic, soft: p.soft ? 1 : 0 };
 }
 
-// ---------------- captions; every video plays at a fixed 1.25x ----------------
+// ---------------- every video: fixed 1.25x, no captions ----------------
 const SPEED = 1.25;
-const pref = LS.get("pref", { cc: false });
-function applyPrefs() { if (!player || !player.setPlaybackRate) return; player.setPlaybackRate(SPEED); setCaptions(pref.cc); renderPrefs(); }
-function setCaptions(on) { try { if (on) { player.loadModule("captions"); player.setOption("captions", "track", { languageCode: "en" }); } else { player.setOption("captions", "track", {}); player.unloadModule("captions"); } } catch {} }
-function toggleCaptions() { pref.cc = !pref.cc; LS.set("pref", pref); setCaptions(pref.cc); renderPrefs(); toast(pref.cc ? "Captions on" : "Captions off"); }
-function renderPrefs() { $("#cc").classList.toggle("on", pref.cc); }
+function applyPrefs() {
+  if (!player || !player.setPlaybackRate) return;
+  player.setPlaybackRate(SPEED);
+  try { player.setOption("captions", "track", {}); player.unloadModule("captions"); } catch {}   // captions off, always
+}
+function renderPrefs() {}
 let toastT; function toast(m) { $("#toast").textContent = m; $("#toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("#toast").classList.remove("show"), 1400); }
 
 const sheetOpen = () => false;
@@ -476,7 +476,6 @@ document.addEventListener("keydown", e => {
   else if (k === " ") { e.preventDefault(); togglePause(); }
   else if (k === "g" || k === "l") react(1);
   else if (k === "b" || k === "d") react(-1);
-  else if (k === "c") toggleCaptions();
   else if (k === "f") toggleFullscreen();
 });
 // tap / click = pause or play
@@ -497,7 +496,6 @@ $("#layer").addEventListener("touchend", e => {
 });
 $("#good").onclick = () => react(1);
 $("#bad").onclick = () => react(-1);
-$("#cc").onclick = toggleCaptions;
 $("#fs").onclick = toggleFullscreen;
 const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
 function renderFs() { $("#fs").classList.toggle("on", isFull()); $("#fs").title = isFull() ? "Exit full screen (F)" : "Full screen (F)"; }

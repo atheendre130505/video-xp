@@ -135,30 +135,38 @@ def channel_uploads(url, topic, n=15, source="expand"):
 
 
 def _sub_lines():
-    """(channel URL, pinned topic or None) per line of subscriptions.txt ("@handle" or "@handle | Topic")."""
+    """(channel URL, pinned topic or None, featured?) per line of subscriptions.txt:
+    "@handle", "@handle | Topic", "@handle | featured", "@handle | featured, Topic"."""
     out = []
     if SUBSCRIPTIONS_FILE.exists():
         for line in SUBSCRIPTIONS_FILE.read_text(encoding="utf-8").splitlines():
             s = line.split("#", 1)[0].strip()
             if s:
-                h, _, topic = (x.strip() for x in s.partition("|"))
-                out.append((h if h.startswith("http") else f"https://www.youtube.com/{h}", topic or None))
+                h, _, rest = (x.strip() for x in s.partition("|"))
+                tags = [t.strip() for t in rest.split(",") if t.strip()]
+                topic = next((t for t in tags if t in CATEGORIES), None)
+                out.append((h if h.startswith("http") else f"https://www.youtube.com/{h}", topic, "featured" in tags))
     return out
 
 
 def subscriptions():
     """Channel URLs from subscriptions.txt."""
-    return [u for u, _ in _sub_lines()]
+    return [u for u, _, _ in _sub_lines()]
 
 
 def pinned_topics():
     """channel display name -> topic, for subscriptions pinned with "| Topic" (names learned when crawled)."""
     out = {}
-    for url, topic in _sub_lines():
+    for url, topic, _ in _sub_lines():
         name = db.kv_get("subname:" + url.rstrip("/")) if topic in CATEGORIES else None
         if name:
             out[name] = topic
     return out
+
+
+def featured_channels():
+    """display names of channels marked "featured" in subscriptions.txt (names learned when crawled)."""
+    return {n for url, _, feat in _sub_lines() if feat for n in [db.kv_get("subname:" + url.rstrip("/"))] if n}
 
 
 def essentials():

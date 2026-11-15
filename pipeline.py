@@ -27,6 +27,9 @@ POOL_EXPLORE = 160        # channels you've never been shown
 PER_CHANNEL_TASTE = 8     # so one channel can't fill the taste pool
 PER_TOPIC = 30            # + the best videos of every topic, so the app can rotate through all of them
 SOURCE_ONLY_TOPICS = {"Personal Growth"}
+FEATURED_MIN = 12         # featured channels (subscriptions.txt "| featured"): at least this many videos each in the feed
+FEATURED_NEWEST = 4       # … of which their newest uploads
+FEATURED_BOOST = 0.08     # … and a small lift so they come up regularly
 SERIES_MAX = 15           # episodes shipped per series
 # "Episode 4", "Ep. 4", "Part 2", "Chapter 3", "(3/10)", "3 of 10"
 EPISODE = re.compile(r"\b(?:episode|ep\.?|part|pt\.?|chapter|chap\.?)\s*#?\s*(\d{1,3})\b|"
@@ -194,7 +197,7 @@ def crawl(quick):
 def export_site(site):
     import numpy as np
     import db, model, fetcher
-    rows = db.q("""SELECT id, topic, source, title, channel, duration, views, p_watch FROM videos
+    rows = db.q("""SELECT rowid AS rid, id, topic, source, title, channel, duration, views, p_watch, added_at FROM videos
                    WHERE embeddable=1 AND enriched != -1 AND p_watch IS NOT NULL AND title IS NOT NULL
                    AND id NOT IN (SELECT video_id FROM events) AND id NOT IN (SELECT video_id FROM history)""")
     n_all = len(rows)
@@ -324,6 +327,19 @@ def export_site(site):
         if i in ser_of:
             for n, j in sorted(series[ser_of[i][0]].items())[:SERIES_MAX]:
                 chosen.setdefault(j, chosen[i])
+
+    # featured channels: always at least FEATURED_MIN videos each, their newest uploads first
+    featured = fetcher.featured_channels()
+    for ch in featured:
+        mine = [i for i in idx if rows[i]["channel"] == ch]
+        newest = sorted(mine, key=lambda i: (-(rows[i]["added_at"] or 0), rows[i]["rid"]))[:FEATURED_NEWEST]
+        best = sorted(mine, key=lambda i: -(rows[i]["p_watch"] + 0.3 * float(sim[i])))
+        for i in list(dict.fromkeys(newest + best))[:FEATURED_MIN]:
+            chosen.setdefault(i, "t")
+    for i in idx:
+        if rows[i]["channel"] in featured:
+            rows[i]["p_watch"] = min(1.0, rows[i]["p_watch"] + FEATURED_BOOST)
+    log.info("featured channels in the feed: %s", {ch: sum(rows[i]["channel"] == ch for i in chosen) for ch in featured})
 
     sel = sorted(chosen, key=lambda i: -rows[i]["p_watch"])
     q8 = lambda M: np.clip(np.round(M * 127), -127, 127).astype(np.int8)
