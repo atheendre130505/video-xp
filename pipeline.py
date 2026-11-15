@@ -28,6 +28,10 @@ PER_CHANNEL_TASTE = 8     # so one channel can't fill the taste pool
 PER_TOPIC = 30            # + the best videos of every topic, so the app can rotate through all of them
 PER_TOPIC_RANDOM = 15     # + random others per topic (new channels for the app's random picks)
 SOURCE_ONLY_TOPICS = {"Personal Growth"}
+KNN = 20                  # topic sorting: how many similar known videos vote
+KNN_MIN_SHARE = 0.65      # … the winning topic needs this share of the vote
+KNN_MIN_SIM = 0.45        # … and at least one really similar known video; otherwise the video stays unsorted
+UNSORTED = "_unsorted"
 FEATURED_MIN = 12         # featured channels (subscriptions.txt "| featured"): at least this many videos each in the feed
 FEATURED_NEWEST = 4       # … of which their newest uploads
 FEATURED_BOOST = 0.08     # … and a small lift so they come up regularly
@@ -198,7 +202,7 @@ def crawl(quick):
 def export_site(site):
     import numpy as np
     import db, model, fetcher
-    rows = db.q("""SELECT rowid AS rid, id, topic, source, title, channel, duration, views, p_watch, added_at FROM videos
+    rows = db.q("""SELECT rowid AS rid, id, topic, source, title, channel, channel_url, duration, views, p_watch, added_at FROM videos
                    WHERE embeddable=1 AND enriched != -1 AND p_watch IS NOT NULL AND title IS NOT NULL
                    AND source NOT IN ('hist_channel', 'channel')   -- channels from your old YouTube history: never shown
                    AND id NOT IN (SELECT video_id FROM events) AND id NOT IN (SELECT video_id FROM history)""")
@@ -229,34 +233,43 @@ def export_site(site):
         taste /= np.linalg.norm(taste)
     sim = Z @ taste
 
+    # must-watch channels: topic as listed in essentials.txt now (so relabelling a channel there applies to its old videos)
+    ess = {url.rstrip("/"): topic for url, topic in fetcher.essentials()}
+    for r in rows:
+        if r["source"] == "essential" and (r["channel_url"] or "").rstrip("/") in ess:
+            r["topic"] = ess[r["channel_url"].rstrip("/")]
     # subscriptions pinned to a topic in subscriptions.txt ("@handle | Personal Growth")
     pinned = fetcher.pinned_topics()
     for r in rows:
         if r["channel"] in pinned:
             r["topic"] = pinned[r["channel"]]
-    # one topic per video: categories as they are; subscription videos (filed under the channel) by meaning
+    # one topic per video. Videos from topic searches / must-watch channels / pinned subscriptions keep theirs.
+    # Every other video is sorted by its 20 most similar videos whose topic is known (similarity-weighted vote).
+    # If the vote is split or nothing similar is known, the video stays unsorted and is left out of the rotation:
+    # better to skip a doubtful video than to file it under the wrong topic.
     cats = list(fetcher.CATEGORIES)
-    cemb = model.embeddings([("cat:" + c, f"{c}: " + ", ".join(fetcher.CATEGORIES[c])) for c in cats])
-    # each topic = its description + the average of videos already known to belong to it (topic searches,
-    # must-watch channels), which is far more reliable than the description alone
-    Cm = []
-    for c in cats:
-        v = cemb["cat:" + c].astype(np.float32)
-        known_i = [i for i, r in enumerate(rows) if r["topic"] == c]
-        if len(known_i) >= 5:
-            m = E[known_i].mean(axis=0)
-            v = v / (np.linalg.norm(v) or 1) + 2 * m / (np.linalg.norm(m) or 1)
-        Cm.append(v / (np.linalg.norm(v) or 1))
-    S_ = E @ np.stack(Cm).T
-    # topics filled only by their own sources (pinned channels, must-watch list, searches), never by meaning:
-    # otherwise general science videos drift into "Personal Growth"
-    for c in SOURCE_ONLY_TOPICS:
-        if c in cats:
-            S_[:, cats.index(c)] = -9
-    best_cat = S_.argmax(axis=1)
-    for i, r in enumerate(rows):
-        if r["topic"] not in fetcher.CATEGORIES:
-            r["topic"] = cats[int(best_cat[i])]
+    En = E / (np.linalg.norm(E, axis=1, keepdims=True) + 1e-9)
+    lab = [i for i, r in enumerate(rows) if r["topic"] in fetcher.CATEGORIES and r["topic"] not in SOURCE_ONLY_TOPICS]
+    unl = [i for i, r in enumerate(rows) if r["topic"] not in fetcher.CATEGORIES]
+    lab_cat = np.array([cats.index(rows[i]["topic"]) for i in lab])
+    L = En[lab]
+    k = min(KNN, len(lab))
+    for s0 in range(0, len(unl), 2000):
+        chunk = unl[s0:s0 + 2000]
+        S_ = En[chunk] @ L.T
+        top = np.argpartition(-S_, k - 1, axis=1)[:, :k]
+        for j, i in enumerate(chunk):
+            nb = top[j]
+            sims = S_[j, nb]
+            votes = np.zeros(len(cats))
+            np.add.at(votes, lab_cat[nb], np.maximum(sims, 0))
+            best = int(votes.argmax())
+            share = votes[best] / (votes.sum() or 1)
+            rows[i]["topic"] = cats[best] if share >= KNN_MIN_SHARE and sims.max() >= KNN_MIN_SIM else UNSORTED
+    keep = [i for i, r in enumerate(rows) if r["topic"] != UNSORTED]
+    log.info("topics: %d known, %d sorted by vote, %d left unsorted (not shown)",
+             len(lab), len(unl) - (len(rows) - len(keep)), len(rows) - len(keep))
+    rows, E, Z, sim = [rows[i] for i in keep], E[keep], Z[keep], sim[keep]
 
     # series: same channel + same title stem + an episode number; at least two episodes to count
     eps = defaultdict(dict)                                   # key -> {episode number: row index}
