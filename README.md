@@ -9,14 +9,14 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 | | Desktop | Phone |
 |---|---|---|
 | good / not good | G / B (or move the mouse → 👍 👎) | tap → 👍 👎 |
-| next video | ↓ (or N): asks for your reaction first | swipe up |
-| previous video | ↑ | swipe down |
 | pause | click, Space | tap |
 | full screen on / off | F | tap → ⛶ |
 
 - Nothing asks you to rate. The buttons stay hidden until you tap (phone) or move the mouse (laptop).
 - When a video ends it waits: the next one starts only after you tap 👍 or 👎.
-- Every video plays at 1.25× without captions. There is no speed control and no skipping ahead or back.
+- 👍 / 👎 is the only way to the next video: no next / previous keys or swipes, so a stray key can't skip one.
+- A video always resumes from the furthest point it reached, on any device.
+- Every video plays at 1.2× without captions. There is no speed control and no skipping ahead or back.
 - Anything you reacted to is never shown again (it stays in the database for learning).
 - **Ads:** sponsor reads inside a video are skipped automatically (SponsorBlock data). If YouTube plays its own ad,
   an "Ad" label appears and your tap reaches YouTube's Skip button. Trailers and product promos are kept out of
