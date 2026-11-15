@@ -28,6 +28,8 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 Topics take turns: after a video, the next one comes from the next topic in the cycle (30 topics, from History → Physics →
 Film → Economics → … to Nature; edit `CATEGORIES` in fetcher.py), the best video of that topic for you. A series (Episode 1, 2, 3…, Part 1/2…) plays in order
 to the end before the topic moves on, and always starts from its earliest episode you haven't seen.
+Within a topic it sometimes picks at random (new channels first): often at the start, less as your ratings
+accumulate (about 60% at 20 ratings, 15% from about 100). A channel never repeats within 5 videos.
 The pool mixes your subscriptions, the must-watch channels in `essentials.txt` and new channels found by topic searches.
 
 ## How it learns (GitHub Actions, every 6 h and shortly after you react)

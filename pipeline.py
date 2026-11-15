@@ -26,6 +26,7 @@ POOL_MUST = 160           # essentials: best of the must-watch channels, spread 
 POOL_EXPLORE = 160        # channels you've never been shown
 PER_CHANNEL_TASTE = 8     # so one channel can't fill the taste pool
 PER_TOPIC = 30            # + the best videos of every topic, so the app can rotate through all of them
+PER_TOPIC_RANDOM = 15     # + random others per topic (new channels for the app's random picks)
 SOURCE_ONLY_TOPICS = {"Personal Growth"}
 FEATURED_MIN = 12         # featured channels (subscriptions.txt "| featured"): at least this many videos each in the feed
 FEATURED_NEWEST = 4       # … of which their newest uploads
@@ -199,6 +200,7 @@ def export_site(site):
     import db, model, fetcher
     rows = db.q("""SELECT rowid AS rid, id, topic, source, title, channel, duration, views, p_watch, added_at FROM videos
                    WHERE embeddable=1 AND enriched != -1 AND p_watch IS NOT NULL AND title IS NOT NULL
+                   AND source NOT IN ('hist_channel', 'channel')   -- channels from your old YouTube history: never shown
                    AND id NOT IN (SELECT video_id FROM events) AND id NOT IN (SELECT video_id FROM history)""")
     n_all = len(rows)
     rows = [r for r in rows if not fetcher.promo(r) and not fetcher.CURRICULUM.search(r["title"] or "")]   # no promos / school lessons
@@ -322,6 +324,9 @@ def export_site(site):
     for t, ii in by_t.items():
         for i in sorted(ii, key=lambda i: -(rows[i]["p_watch"] + 0.3 * float(sim[i])))[:PER_TOPIC]:
             chosen.setdefault(i, "t")
+        rest = [i for i in ii if i not in chosen and not fetcher.clickbait(rows[i]["title"]) and not fetcher.filler(rows[i])]
+        for i in rng.sample(rest, min(PER_TOPIC_RANDOM, len(rest))):
+            chosen[i] = "x"
     # series: if any episode is in the feed, ship the series (so it can be played in order)
     for i in list(chosen):
         if i in ser_of:

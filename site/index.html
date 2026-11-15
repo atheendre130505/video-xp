@@ -118,8 +118,17 @@ function cos(i, v) { let s = 0; const o = i * D.dim; for (let k = 0; k < D.dim; 
 
 // ---------------- what plays next ----------------
 // 1) inside a series (Episode 1, 2, 3…): the next episode, in order, until it's done
-// 2) otherwise: jump to the next topic in the cycle (History → Philosophy → Physics → …) and play its best video
-//    (cloud score + closeness to your taste). A series always starts from its earliest episode you haven't seen.
+// 2) otherwise: the next topic in the cycle (History → Physics → Film → …), and within it:
+//    - with probability `explore` a random video (new channels first), otherwise the best one for you;
+//      explore starts high and shrinks as your ratings accumulate (~60% at 20 ratings, ~15% from ~100)
+//    - never a channel you saw in the last 5 videos; channels seen often lately rank lower
+//    A series always starts from its earliest episode you haven't seen.
+let recentCh = LS.get("recentCh", []);                 // channels of the last 40 videos, oldest first
+function noteChannel(ch) { if (!ch) return; recentCh = [...recentCh, ch].slice(-40); LS.set("recentCh", recentCh); }
+function exploreRate() {
+  const n = Math.max(Object.keys(ratings).length, cloud.reactions || 0);
+  return Math.max(0.15, 0.85 * Math.exp(-n / 60));
+}
 function pickNext() {
   const busy = new Set([S.cur, ...S.queue].filter(Boolean).map(v => v.id));
   const free = D.rows.filter(r => !seen.has(r.id) && !busy.has(r.id) && !progress[r.id]);
@@ -129,14 +138,24 @@ function pickNext() {
     const ep = free.filter(r => r.s === last.s && r.n > last.n).sort((a, b) => a.n - b.n)[0];
     if (ep) return ep;
   }
+  const recent = [...recentCh, ...S.queue.map(v => v.channel)];
+  const blocked = new Set(recent.slice(-5));
+  const often = ch => recent.filter(c => c === ch).length;
   const T = taste();
-  const score = r => r.p + (T ? 0.35 * cos(r.i, T) : 0) - (last && r.channel === last.channel ? 1 : 0);
+  const score = r => r.p + (T ? 0.35 * cos(r.i, T) : 0) - 0.12 * often(r.channel) - (blocked.has(r.channel) ? 1 : 0);
+  const explore = Math.random() < exploreRate();
   const order = D.topics, k = last ? order.indexOf(last.topic) : -1;
   for (let step = 1; step <= order.length; step++) {
     const t = order[(k + step + order.length) % order.length];
     const pool = free.filter(r => r.topic === t);
     if (!pool.length) continue;
-    let v = pool.sort((a, b) => score(b) - score(a))[0];
+    let v;
+    if (explore) {
+      const fresh = pool.filter(r => !blocked.has(r.channel) && !often(r.channel));
+      const open = fresh.length ? fresh : pool.filter(r => !blocked.has(r.channel));
+      const from = open.length ? open : pool;
+      v = from[Math.floor(Math.random() * from.length)];
+    } else v = pool.sort((a, b) => score(b) - score(a))[0];
     if (v.s) v = free.filter(r => r.s === v.s).sort((a, b) => a.n - b.n)[0];   // start the series at the beginning
     return v;
   }
@@ -167,6 +186,7 @@ function next() {
 function back() { if (!S.played.length) return; saveProgress(true); if (S.cur) S.queue.unshift(S.cur); play(S.played.pop()); }
 
 function play(v, at = 0, paused = false) {
+  if (!S.cur || S.cur.id !== v.id) noteChannel(v.channel);
   S.cur = v; S.watched = 0; S.secs = 0; S.fast = 0; S.skips = 0; S.ended = false; hideAsk(); loadSegments(v.id); document.body.classList.remove("ad");
   const r = ratings[v.id];
   $("#good").classList.toggle("on", !!r && r.w > 0); $("#bad").classList.toggle("on", !!r && r.w < 0);
@@ -403,7 +423,7 @@ async function pull() {
   try {
     const st = await fetch("state.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null);
     if (st) {
-      cloud = { generated: st.generated, taste: st.taste }; LS.set("cloud", cloud);
+      cloud = { generated: st.generated, taste: st.taste, reactions: st.reactions || 0 }; LS.set("cloud", cloud);
       for (const id of st.rated || []) seen.add(id);
       for (const pr of st.progress || []) mergeProgress(pr.id, pr);
     }
