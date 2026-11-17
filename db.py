@@ -99,9 +99,11 @@ def add_candidates(topic, entries, source):
     with conn() as c:
         for e in entries:
             c.execute("""INSERT OR IGNORE INTO videos (id, topic, title, channel, channel_url, duration, views,
-                         added_at, source) VALUES (?,?,?,?,?,?,?,?,?)""",
+                         added_at, source, upload_date) VALUES (?,?,?,?,?,?,?,?,?,?)""",
                       (e["id"], topic, e.get("title"), e.get("channel"), e.get("channel_url"), e.get("duration"),
-                       e.get("view_count"), time.time(), source))
+                       e.get("view_count"), time.time(), source, e.get("upload_date")))
+            if e.get("upload_date"):         # older rows learn their (approximate) upload date when listed again
+                c.execute("UPDATE videos SET upload_date=? WHERE id=? AND upload_date IS NULL", (e["upload_date"], e["id"]))
             if e.get("view_count"):          # keep view counts fresh on re-listing
                 c.execute("UPDATE videos SET views=? WHERE id=?", (e["view_count"], e["id"]))
 

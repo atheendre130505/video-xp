@@ -17,7 +17,8 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 - When a video ends it waits: the next one starts only after you tap 👍 or 👎.
 - 👍 / 👎 is the only way to the next video: no next / previous keys or swipes, so a stray key can't skip one.
 - A video always resumes from the furthest point it reached, on any device.
-- Every video plays at 1.2×, captions on by default, and always fits the screen (black bars rather than cropping).
+- Every video plays at 1.2×, captions on by default (checked every 2 s and put back if YouTube drops them),
+  and always fits the screen (black bars rather than cropping).
   There is no speed control and no skipping ahead or back.
 - Anything you reacted to is never shown again (it stays in the database for learning).
 - **Ads:** sponsor reads inside a video are skipped automatically (SponsorBlock data). If YouTube plays its own ad,
@@ -27,13 +28,16 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 - Close the app mid-video and it resumes there, on any synced device.
 
 ## What plays
-One topic a day, the same on every device: the 30 topics (History, Physics, Film, Economics … Nature; edit
-`CATEGORIES` in fetcher.py) take turns, one per day. The day's topic alternates with its two closest topics
-(a Finance day mixes in Business and Economics), and nothing too similar to the last 5 videos is picked.
-The next day's topic starts with the first video after midnight. A series (Episode 1, 2, 3…, Part 1/2…) plays in order
-from its earliest episode you haven't seen.
-Within a topic it sometimes picks at random (new channels first): often at the start, less as your ratings
-accumulate (about 60% at 20 ratings, 15% from about 100). A channel never repeats within 5 videos.
+Aim: videos you'll call good (learning) and watch through (view time), moving across topics.
+- **Topic:** Thompson sampling. Each topic's record of good / not good is a Beta belief; one draw per topic, highest
+  wins. Well-rated topics come up more, little-tried topics still get turns, and never the topic of the last 2 videos.
+- **Video:** chance you'll call it good (the model) + closeness to your taste + expected completion (how much of the
+  most similar videos you watched) + freshness (+0.10 when new, halving every 60 days), then re-ranked against the
+  last 5 videos (MMR) so it's related but not the same content. No channel repeats within 5 videos; sometimes a random
+  video from a new channel (often at first, rarely later).
+- A series (Episode 1, 2, 3…, Part 1/2…) plays in order from its earliest episode you haven't seen.
+- New uploads (last 30 days) from channels you follow are always in the feed.
+
 The pool mixes your subscriptions, the must-watch channels in `essentials.txt` and new channels found by topic searches.
 
 ## How it learns (GitHub Actions, every 6 h and shortly after you react)

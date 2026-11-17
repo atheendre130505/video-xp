@@ -35,6 +35,10 @@ UNSORTED = "_unsorted"
 FEATURED_MIN = 12         # featured channels (subscriptions.txt "| featured"): at least this many videos each in the feed
 FEATURED_NEWEST = 4       # … of which their newest uploads
 FEATURED_BOOST = 0.08     # … and a small lift so they come up regularly
+FRESH_BOOST = 0.10        # newer videos score a little higher: +0.10 when brand new, halving every …
+FRESH_HALF_LIFE = 60      # … 60 days (upload dates are approximate: "3 weeks ago")
+POOL_NEW = 80             # + the newest uploads (last 30 days) of channels you follow
+COMPLETION_K = 8          # expected completion: from the 8 most similar videos you watched
 SERIES_MAX = 15           # episodes shipped per series
 # "Episode 4", "Ep. 4", "Part 2", "Chapter 3", "(3/10)", "3 of 10"
 EPISODE = re.compile(r"\b(?:episode|ep\.?|part|pt\.?|chapter|chap\.?)\s*#?\s*(\d{1,3})\b|"
@@ -202,7 +206,8 @@ def crawl(quick):
 def export_site(site):
     import numpy as np
     import db, model, fetcher
-    rows = db.q("""SELECT rowid AS rid, id, topic, source, title, channel, channel_url, duration, views, p_watch, added_at FROM videos
+    rows = db.q("""SELECT rowid AS rid, id, topic, source, title, channel, channel_url, duration, views, p_watch, added_at,
+                          upload_date FROM videos
                    WHERE embeddable=1 AND enriched != -1 AND p_watch IS NOT NULL AND title IS NOT NULL
                    AND source NOT IN ('hist_channel', 'channel')   -- channels from your old YouTube history: never shown
                    AND id NOT IN (SELECT video_id FROM events) AND id NOT IN (SELECT video_id FROM history)""")
@@ -273,6 +278,48 @@ def export_site(site):
              len(lab), len(unl) - (len(rows) - len(keep)), len(rows) - len(keep))
     rows, E, Z, sim = [rows[i] for i in keep], E[keep], Z[keep], sim[keep]
 
+    # topic of each video you reacted to (same vote, no abstaining): good / not good per topic, for the app's topic choice
+    topic_stats = defaultdict(lambda: [0, 0])
+    rv = [v for v in reacted if v in emb]
+    if rv and len(lab):
+        R = np.stack([emb[v] for v in rv]).astype(np.float32)
+        R /= np.linalg.norm(R, axis=1, keepdims=True) + 1e-9
+        S_ = R @ L.T
+        top = np.argpartition(-S_, k - 1, axis=1)[:, :k]
+        for j, v in enumerate(rv):
+            votes = np.zeros(len(cats))
+            np.add.at(votes, lab_cat[top[j]], np.maximum(S_[j, top[j]], 0))
+            topic_stats[cats[int(votes.argmax())]][0 if reacted[v][0] == 1 else 1] += 1
+
+    # how much of a video you'd likely watch: completion (furthest point / length) of the most similar videos you
+    # watched, pulled toward your average when little is similar
+    far = defaultdict(float)
+    for e in db.events():
+        far[e["video_id"]] = max(far[e["video_id"]], e.get("pos") or 0)
+    wv = [v for v in ev_rows if v in emb and far.get(v) and ev_rows[v]["duration"]]
+    comp = np.full(len(rows), 0.5, dtype=np.float32)
+    if wv:
+        cw = np.array([min(1.0, far[v] / ev_rows[v]["duration"]) for v in wv], dtype=np.float32)
+        mu = float(cw.mean())
+        Zw = proj(np.stack([emb[v] for v in wv]).astype(np.float32))
+        kk = min(COMPLETION_K, len(wv))
+        for s0 in range(0, len(rows), 4000):
+            S_ = Z[s0:s0 + 4000] @ Zw.T
+            nb = np.argpartition(-S_, kk - 1, axis=1)[:, :kk]
+            w = np.maximum(np.take_along_axis(S_, nb, axis=1), 0) ** 2
+            comp[s0:s0 + 4000] = ((w * cw[nb]).sum(1) + mu) / (w.sum(1) + 1.0)
+        log.info("expected completion from %d watched videos (average %.0f%%)", len(wv), 100 * mu)
+
+    # age in days from the (approximate) upload date; unknown = no freshness lift
+    def _age(d):
+        try:
+            return max(0, int((time.time() - time.mktime(time.strptime(str(d), "%Y%m%d"))) // 86400))
+        except Exception:
+            return None
+    age = [_age(r["upload_date"]) if r["upload_date"] else None for r in rows]
+    fresh = lambda i: FRESH_BOOST * 0.5 ** (age[i] / FRESH_HALF_LIFE) if age[i] is not None else 0.0
+    rank = lambda i: rows[i]["p_watch"] + 0.3 * float(sim[i]) + fresh(i) + 0.15 * (float(comp[i]) - 0.5)
+
     # series: same channel + same title stem + an episode number; at least two episodes to count
     eps = defaultdict(dict)                                   # key -> {episode number: row index}
     for i, r in enumerate(rows):
@@ -295,7 +342,7 @@ def export_site(site):
 
     # T: taste — model score + closeness to the taste vector, capped per channel
     per = defaultdict(int)
-    for i in sorted(idx, key=lambda i: -(rows[i]["p_watch"] + 0.3 * float(sim[i]))):
+    for i in sorted(idx, key=lambda i: -rank(i)):
         if per[rows[i]["channel"]] < PER_CHANNEL_TASTE:
             per[rows[i]["channel"]] += 1
             chosen[i] = "t"
@@ -337,7 +384,7 @@ def export_site(site):
     for i in idx:
         by_t[rows[i]["topic"]].append(i)
     for t, ii in by_t.items():
-        for i in sorted(ii, key=lambda i: -(rows[i]["p_watch"] + 0.3 * float(sim[i])))[:PER_TOPIC]:
+        for i in sorted(ii, key=lambda i: -rank(i))[:PER_TOPIC]:
             chosen.setdefault(i, "t")
         rest = [i for i in ii if i not in chosen and not fetcher.clickbait(rows[i]["title"]) and not fetcher.filler(rows[i])]
         for i in rng.sample(rest, min(PER_TOPIC_RANDOM, len(rest))):
@@ -353,7 +400,7 @@ def export_site(site):
     for ch in featured:
         mine = [i for i in idx if rows[i]["channel"] == ch]
         newest = sorted(mine, key=lambda i: (-(rows[i]["added_at"] or 0), rows[i]["rid"]))[:FEATURED_NEWEST]
-        best = sorted(mine, key=lambda i: -(rows[i]["p_watch"] + 0.3 * float(sim[i])))
+        best = sorted(mine, key=lambda i: -rank(i))
         for i in list(dict.fromkeys(newest + best))[:FEATURED_MIN]:
             chosen.setdefault(i, "t")
     for i in idx:
@@ -361,15 +408,23 @@ def export_site(site):
             rows[i]["p_watch"] = min(1.0, rows[i]["p_watch"] + FEATURED_BOOST)
     log.info("featured channels in the feed: %s", {ch: sum(rows[i]["channel"] == ch for i in chosen) for ch in featured})
 
+    # new uploads (last 30 days) from channels you follow or must-watch channels, best first
+    new = [i for i in idx if age[i] is not None and age[i] <= 30 and rows[i]["source"] in ("sub", "essential")
+           and not fetcher.filler(rows[i])]
+    for i in sorted(new, key=lambda i: -rank(i))[:POOL_NEW]:
+        chosen.setdefault(i, "t")
+    log.info("new uploads (30 days) available: %d, dated videos: %d", len(new), sum(a is not None for a in age))
+
     sel = sorted(chosen, key=lambda i: -rows[i]["p_watch"])
     q8 = lambda M: np.clip(np.round(M * 127), -127, 127).astype(np.int8)
     gen = int(time.time())                                    # same stamp on feed + state: the app checks they match
     feed = {"generated": gen, "dim": PCA_DIM,
             "topics": [c for c in cats if any(rows[i]["topic"] == c for i in sel)],   # the rotation order
-            "cols": ["id", "title", "channel", "duration", "topic", "p", "views", "kind", "s", "n"],
+            "cols": ["id", "title", "channel", "duration", "topic", "p", "views", "kind", "s", "n", "c", "a"],
             "rows": [[rows[i]["id"], rows[i]["title"], rows[i]["channel"], rows[i]["duration"], rows[i]["topic"],
                       round(float(rows[i]["p_watch"]), 4), rows[i]["views"], chosen[i],
-                      ser_of.get(i, (None, None))[0], ser_of.get(i, (None, None))[1]] for i in sel],
+                      ser_of.get(i, (None, None))[0], ser_of.get(i, (None, None))[1],
+                      round(float(comp[i]), 3), age[i]] for i in sel],
             "vec": base64.b64encode(q8(Z[sel]).tobytes()).decode()}
     site.mkdir(parents=True, exist_ok=True)
     for name in ("index.html", "icon.png"):
@@ -388,7 +443,7 @@ def export_site(site):
     progress.sort(key=lambda p: -p["ts"])
     rated = [r["video_id"] for r in db.q("SELECT DISTINCT video_id FROM events WHERE liked IS NOT NULL")]
     state = {"generated": gen, "taste": [round(float(x), 4) for x in taste], "rated": rated,
-             "progress": progress[:10], "reactions": len(reacted)}
+             "progress": progress[:10], "reactions": len(reacted), "topics": dict(topic_stats)}
     (site / "state.json").write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
     kinds = defaultdict(int)
     for k in chosen.values():

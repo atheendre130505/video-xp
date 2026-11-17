@@ -12,10 +12,10 @@
   :root { --bg:#000; --good:#3fb950; --bad:#f85149; --panel:rgba(18,18,20,.94); --line:#2b2f35; --dim:#9aa1a9; --acc:#ff6a3d; }
   html, body { margin:0; height:100%; background:var(--bg); overflow:hidden; overscroll-behavior:none; color:#eee;
                font:15px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
-  /* player is 120px taller than the screen so YouTube's own title bar / end-screen strip sit off-screen */
+  /* player starts 60px above the screen so YouTube's own title bar sits off-screen; its bottom edge (captions) stays visible */
   /* … and never wider than a 16:9 picture at full screen height, so the whole video fits (black bars, no cropping) */
-  #player, #player iframe { position:fixed; left:50%; transform:translateX(-50%); top:-60px; width:min(100vw, calc(100dvh * 16 / 9));
-                            height:calc(100dvh + 120px); border:0; }
+  #player, #player iframe { position:fixed; left:50%; transform:translateX(-50%); top:-60px;
+                            width:min(100vw, calc((100dvh - 60px) * 16 / 9)); height:calc(100dvh + 60px); border:0; }
   #layer { position:fixed; inset:0; z-index:2; cursor:none; touch-action:none; -webkit-tap-highlight-color:transparent; }
   #layer.awake { cursor:default; }
   .ctl { position:fixed; z-index:3; opacity:0; transition:opacity .25s; pointer-events:none; }
@@ -98,7 +98,8 @@ async function load() {
   D.vec = Int8Array.from(atob(feed.vec), ch => ch.charCodeAt(0));
   D.rows = feed.rows.map((r, i) => ({ i, id: r[c.id], title: r[c.title], channel: r[c.channel], dur: r[c.duration],
                                       topic: r[c.topic], p: r[c.p], views: r[c.views], kind: r[c.kind],
-                                      s: c.s != null ? r[c.s] : null, n: c.n != null ? r[c.n] : null }));
+                                      s: c.s != null ? r[c.s] : null, n: c.n != null ? r[c.n] : null,
+                                      c: c.c != null ? r[c.c] : 0.5, a: c.a != null ? r[c.a] : null }));
   D.topics = feed.topics || [...new Set(D.rows.map(r => r.topic))];
   D.byId = new Map(D.rows.map(r => [r.id, r]));
 }
@@ -120,93 +121,95 @@ function taste() {
 function cos(i, v) { let s = 0; const o = i * D.dim; for (let k = 0; k < D.dim; k++) s += D.vec[o + k] * v[k]; return s / 127; }
 
 // ---------------- what plays next ----------------
-// One topic a day (the same on every device), and around it its closest topics: on a Finance day, Finance with
-// e.g. Economics and Business mixed in. The next day's topic starts with the first video after midnight.
-// 1) inside a series (Episode 1, 2, 3...): the next episode, in order, until it's done (same day only)
-// 2) otherwise: alternately the day's topic and one of its 2 nearest topics; within that topic:
-//    - with probability "explore" a random video (new channels first), otherwise the best one for you;
-//      explore starts high and shrinks as your ratings accumulate (~60% at 20 ratings, ~15% from ~100)
-//    - never a channel you saw in the last 5 videos; never something too close to the last 5 videos
+// Aim: videos you'll call good (learning) and watch through (view time), moving across topics.
+// 1) inside a series (Episode 1, 2, 3...): the next episode, in order, until it's done.
+// 2) topic: Thompson sampling. Each topic's record (good / not good) is a Beta(1 + good, 1 + not good) belief; draw
+//    one sample per topic and the highest draw wins. Topics you rate well win more often; topics you've hardly tried
+//    have wide beliefs, so they still win now and then (exploration that fades as the record grows).
+//    Never the topic of either of the last 2 videos, so it keeps moving.
+// 3) video within that topic: value = chance you call it good (model) + closeness to your taste
+//    + expected completion (how much of similar videos you watched) + freshness (newer = a little higher),
+//    then MMR re-ranking: minus its similarity to the last 5 videos, so it's related but not the same content.
+//    Never a channel from the last 5 videos. Sometimes (often early on, rarely later) a random video from a new channel.
 let recentCh = LS.get("recentCh", []);                 // channels of the last 40 videos, oldest first
 let recentIds = LS.get("recentIds", []);               // last 10 videos
-function noteChannel(ch, id) {
+let recentT = LS.get("recentT", []);                   // topics of the last 10 videos
+function noteChannel(ch, id, topic) {
   if (ch) { recentCh = [...recentCh, ch].slice(-40); LS.set("recentCh", recentCh); }
   if (id) { recentIds = [...recentIds, id].slice(-10); LS.set("recentIds", recentIds); }
+  if (topic) { recentT = [...recentT, topic].slice(-10); LS.set("recentT", recentT); }
 }
 function exploreRate() {
   const n = Math.max(Object.keys(ratings).length, cloud.reactions || 0);
-  return Math.max(0.15, 0.85 * Math.exp(-n / 60));
+  return Math.max(0.1, 0.6 * Math.exp(-n / 60));
 }
+const W = { taste: 0.35, completion: 0.25, mmr: 0.4, fresh: 0.1, halfLife: 60 };
 const SAME_CONTENT = 0.8;                              // similarity above this to a recent video = "the same content"
-const dayNo = () => { const d = new Date(); return Math.floor((d - d.getTimezoneOffset() * 60000) / 864e5); };
-let nearCache = null;
-function nearTopics() {                                // topic -> its 2 closest topics, by the average of their videos
-  if (nearCache) return nearCache;
-  const cen = {};
-  for (const r of D.rows) {
-    const c = cen[r.topic] || (cen[r.topic] = new Float32Array(D.dim)), o = r.i * D.dim;
-    for (let k = 0; k < D.dim; k++) c[k] += D.vec[o + k];
-  }
-  for (const c of Object.values(cen)) { let m = 0; for (const x of c) m += x * x; m = Math.sqrt(m) || 1; for (let k = 0; k < D.dim; k++) c[k] /= m; }
-  const dot = (a, b) => { let s = 0; for (let k = 0; k < D.dim; k++) s += a[k] * b[k]; return s; };
-  nearCache = {};
-  for (const t of Object.keys(cen))
-    nearCache[t] = Object.keys(cen).filter(u => u !== t).sort((a, b) => dot(cen[t], cen[b]) - dot(cen[t], cen[a])).slice(0, 2);
-  return nearCache;
-}
+const fresh = r => r.a == null ? 0 : W.fresh * Math.pow(0.5, r.a / W.halfLife);
 function vsim(i, j) {                                  // similarity of two videos
   let s = 0, a = 0, b = 0; const oi = i * D.dim, oj = j * D.dim;
   for (let k = 0; k < D.dim; k++) { const x = D.vec[oi + k], y = D.vec[oj + k]; s += x * y; a += x * x; b += y * y; }
   return s / (Math.sqrt(a * b) || 1);
 }
-function dayTopic(free) {                              // today's topic: the topics take turns, one per day
-  const order = D.topics, d = dayNo();
-  for (let step = 0; step < order.length; step++) {
-    const t = order[(d + step) % order.length];
-    if (free.filter(r => r.topic === t).length >= 5) return t;
+function betaSample(a, b) {                            // Beta(a, b) for whole a, b: the a-th smallest of a+b-1 uniforms
+  const u = Array.from({ length: a + b - 1 }, Math.random).sort((x, y) => x - y);
+  return u[a - 1];
+}
+function topicRecord() {                               // topic -> [good, not good]: synced record + reactions made here since
+  const rec = {};
+  for (const [t, gb] of Object.entries(cloud.topics || {})) rec[t] = [gb[0], gb[1]];
+  for (const [id, r] of Object.entries(ratings)) {
+    const row = D.byId.get(id);
+    if (!row || r.ts <= (cloud.generated || 0)) continue;
+    const x = rec[row.topic] || (rec[row.topic] = [0, 0]); x[r.w > 0 ? 0 : 1] += 1;
   }
-  return order[d % order.length];
+  return rec;
+}
+function pickTopic(free) {
+  const have = new Set(free.map(r => r.topic));
+  const recentTopics = new Set([...recentT, ...S.queue.map(v => v.topic)].slice(-2));
+  const rec = topicRecord();
+  let best = null, bestDraw = -1;
+  for (const t of D.topics) {
+    if (!have.has(t) || recentTopics.has(t)) continue;
+    const [g, b] = rec[t] || [0, 0];
+    const draw = betaSample(1 + Math.min(g, 60), 1 + Math.min(b, 60));
+    if (draw > bestDraw) { bestDraw = draw; best = t; }
+  }
+  return best || [...have][0];
 }
 function pickNext() {
   const busy = new Set([S.cur, ...S.queue].filter(Boolean).map(v => v.id));
   const free = D.rows.filter(r => !seen.has(r.id) && !busy.has(r.id) && !progress[r.id]);
   if (!free.length) return null;
   const last = S.queue.length ? S.queue[S.queue.length - 1] : (S.cur || S.played[S.played.length - 1]);
-  const today = dayNo();
-  if (last && last.s && (last.day == null || last.day === today)) {
+  if (last && last.s) {
     const ep = free.filter(r => r.s === last.s && r.n > last.n).sort((a, b) => a.n - b.n)[0];
-    if (ep) return { ...ep, day: today };
+    if (ep) return ep;
   }
   const recent = [...recentCh, ...S.queue.map(v => v.channel)];
   const blocked = new Set(recent.slice(-5));
   const often = ch => recent.filter(c => c === ch).length;
   const lastFive = [...recentIds, ...S.queue.map(v => v.id)].slice(-5).map(id => D.byId.get(id)).filter(Boolean);
-  const tooClose = r => lastFive.some(x => vsim(r.i, x.i) > SAME_CONTENT);
+  const nearest = r => lastFive.reduce((m, x) => Math.max(m, vsim(r.i, x.i)), 0);
   const T = taste();
-  const score = r => r.p + (T ? 0.35 * cos(r.i, T) : 0) - 0.12 * often(r.channel) - (blocked.has(r.channel) ? 1 : 0);
-  const explore = Math.random() < exploreRate();
-  const main = dayTopic(free), near = nearTopics()[main] || [];
-  // slot within the day: day topic, near 1, day topic, near 2, ...
-  const k = LS.get("daySlot", { day: today, n: 0 });
-  if (k.day !== today) { k.day = today; k.n = 0; }
-  const slot = k.n++; LS.set("daySlot", k);
-  const want = slot % 2 === 0 || !near.length ? [main, ...near] : [near[(slot >> 1) % near.length], main, ...near];
-  for (const t of want) {
-    const all = free.filter(r => r.topic === t);
-    const apart = all.filter(r => !tooClose(r));
-    const pool = apart.length ? apart : all;
-    if (!pool.length) continue;
-    let v;
-    if (explore) {
-      const fresh = pool.filter(r => !blocked.has(r.channel) && !often(r.channel));
-      const open = fresh.length ? fresh : pool.filter(r => !blocked.has(r.channel));
-      const from = open.length ? open : pool;
-      v = from[Math.floor(Math.random() * from.length)];
-    } else v = pool.sort((a, b) => score(b) - score(a))[0];
-    if (v.s) v = free.filter(r => r.s === v.s).sort((a, b) => a.n - b.n)[0];   // start the series at the beginning
-    return { ...v, day: today };
+  const value = r => r.p + (T ? W.taste * cos(r.i, T) : 0) + W.completion * ((r.c ?? 0.5) - 0.5) + fresh(r)
+                     - 0.12 * often(r.channel) - (blocked.has(r.channel) ? 1 : 0);
+  const t = pickTopic(free);
+  const all = free.filter(r => r.topic === t);
+  const apart = all.filter(r => nearest(r) <= SAME_CONTENT);
+  const pool = apart.length ? apart : all;
+  let v;
+  if (Math.random() < exploreRate()) {                 // wildcard: a channel you haven't seen lately
+    const fresh_ = pool.filter(r => !blocked.has(r.channel) && !often(r.channel));
+    const from = fresh_.length ? fresh_ : pool;
+    v = from[Math.floor(Math.random() * from.length)];
+  } else {
+    let bestV = -1e9;
+    for (const r of pool) { const m = value(r) - W.mmr * nearest(r); if (m > bestV) { bestV = m; v = r; } }
   }
-  return { ...free.sort((a, b) => score(b) - score(a))[0], day: today };
+  if (v && v.s) v = free.filter(r => r.s === v.s).sort((a, b) => a.n - b.n)[0];   // start the series at the beginning
+  return v || null;
 }
 function fill() { while (S.queue.length < 2) { const v = pickNext(); if (!v) break; S.queue.push(v); } }
 
@@ -219,9 +222,7 @@ const ytOk = () => ytReady || !!(window.YT && window.YT.loaded && window.YT.Play
 function advance() {
   saveProgress(true);
   if (S.cur) S.played.push(S.cur);
-  S.cur = null;
-  if (S.queue.some(v => v.day != null && v.day !== dayNo())) S.queue = [];
-  fill();
+  S.cur = null; fill();
   const v = S.queue.shift();
   if (!v) { $("#wait").textContent = "That’s everything for now. New videos arrive with the next cloud run."; return; }
   $("#wait").textContent = ""; play(v); fill();
@@ -232,7 +233,7 @@ const furthest = (id, at = 0) => Math.max(at || 0, progress[id]?.pos || 0);
 
 function play(v, at = 0, paused = false) {
   at = furthest(v.id, at);
-  if (!S.cur || S.cur.id !== v.id) noteChannel(v.channel, v.id);
+  if (!S.cur || S.cur.id !== v.id) noteChannel(v.channel, v.id, v.topic);
   S.cur = v; S.watched = 0; S.secs = 0; S.fast = 0; S.skips = 0; S.ended = false; hideAsk(); loadSegments(v.id); document.body.classList.remove("ad");
   const r = ratings[v.id];
   $("#good").classList.toggle("on", !!r && r.w > 0); $("#bad").classList.toggle("on", !!r && r.w < 0);
@@ -469,7 +470,7 @@ async function pull() {
   try {
     const st = await fetch("state.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null);
     if (st) {
-      cloud = { generated: st.generated, taste: st.taste, reactions: st.reactions || 0 }; LS.set("cloud", cloud);
+      cloud = { generated: st.generated, taste: st.taste, reactions: st.reactions || 0, topics: st.topics || {} }; LS.set("cloud", cloud);
       for (const id of st.rated || []) seen.add(id);
       for (const pr of st.progress || []) mergeProgress(pr.id, pr);
     }
@@ -506,8 +507,32 @@ function mergeProgress(id, p) {
 // ---------------- every video: fixed 1.2x; captions on / off (C) ----------------
 const SPEED = 1.2;
 const pref = LS.get("pref", { cc: true });
-function applyPrefs() { if (!player || !player.setPlaybackRate) return; player.setPlaybackRate(SPEED); setCaptions(pref.cc); renderPrefs(); }
-function setCaptions(on) { try { if (on) { player.loadModule("captions"); player.setOption("captions", "track", { languageCode: "en" }); } else { player.setOption("captions", "track", {}); player.unloadModule("captions"); } } catch {} }
+function applyPrefs() { if (!player || !player.setPlaybackRate) return; player.setPlaybackRate(SPEED); ccState = { id: null, tries: 0 }; keepCaptions(); renderPrefs(); }
+// YouTube loads the caption list a little after the video starts (later on a slow network) and sometimes drops the
+// track between videos. So: every 2 s, if captions should be on and none is showing, pick a track once the list is
+// there. It only acts when nothing is showing, so a working track is never touched (no flicker).
+let ccState = { id: null, tries: 0 };
+function keepCaptions() {
+  if (!player || !player.getOption || !S.cur || adPlaying()) return;
+  try {
+    if (!pref.cc) {
+      if (ccState.id !== "off:" + S.cur.id) { player.setOption("captions", "track", {}); player.unloadModule("captions"); ccState.id = "off:" + S.cur.id; }
+      return;
+    }
+    const cur = player.getOption("captions", "track");
+    if (cur && cur.languageCode) { ccState.id = S.cur.id; return; }          // showing
+    const list = player.getOption("captions", "tracklist") || [];
+    if (!list.length) {                                                       // list not there yet: ask for it, now and then
+      if (ccState.tries++ % 3 === 0) player.loadModule("captions");
+      return;
+    }
+    const en = list.filter(t => /^en/i.test(t.languageCode || ""));
+    const pick = en.find(t => t.kind !== "asr") || en[0] || list.find(t => t.kind !== "asr") || list[0];
+    player.setOption("captions", "track", pick);
+  } catch {}
+}
+setInterval(keepCaptions, 2000);
+function setCaptions(on) { ccState = { id: null, tries: 0 }; if (on) keepCaptions(); else { try { player.setOption("captions", "track", {}); player.unloadModule("captions"); } catch {} } }
 function toggleCaptions() { pref.cc = !pref.cc; LS.set("pref", pref); setCaptions(pref.cc); renderPrefs(); toast(pref.cc ? "Captions on" : "Captions off"); }
 function renderPrefs() { $("#cc").classList.toggle("on", pref.cc); }
 let toastT; function toast(m) { $("#toast").textContent = m; $("#toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("#toast").classList.remove("show"), 1400); }

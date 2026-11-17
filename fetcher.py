@@ -87,11 +87,13 @@ SUBSCRIPTIONS_FILE = Path(__file__).with_name("subscriptions.txt")
 SUB_LATEST = 600            # first crawl of a subscribed channel: newest videos …
 SUB_POPULAR = 300           # … plus its most popular ones (covers huge channels without listing 100k videos)
 SUB_REFRESH = 40            # later crawls: just the newest
-MIN_DURATION, MAX_DURATION = 3 * 60, 4 * 60 * 60
+MIN_DURATION, MAX_DURATION = 3 * 60, 12 * 60 * 60     # long podcasts are welcome; 12h+ is livestream loops
 BOT = ("not a bot", "Please sign in.")
 
 blocked = False             # YouTube asked us to stop (bot check): the caller ends the crawl for this run
-_BASE = {"quiet": True, "no_warnings": True, "skip_download": True, "noprogress": True, "extract_flat": True}
+_BASE = {"quiet": True, "no_warnings": True, "skip_download": True, "noprogress": True, "extract_flat": True,
+         # approximate upload dates ("3 days ago") from the same listing page: no extra requests
+         "extractor_args": {"youtubetab": {"approximate_date": [""]}}}
 
 
 def _flat(url, n):
@@ -114,6 +116,7 @@ def _store(entries, topic, source, channel=None, channel_url=None):
                 or CURRICULUM.search(e.get("title") or ""):
             continue
         rows.append({"id": e["id"], "title": e.get("title"), "duration": d, "view_count": e.get("view_count"),
+                     "upload_date": e.get("upload_date"),
                      "channel": e.get("channel") or e.get("uploader") or channel,
                      "channel_url": channel_url or e.get("channel_url") or e.get("uploader_url")})
     db.add_candidates(topic, rows, source)
