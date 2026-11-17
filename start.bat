@@ -1,2 +1,2 @@
 @echo off
-start "" https://atheendre130505.github.io/video-xp/
+wscript "%~dp0scripts\windows\start-videoxp.vbs"

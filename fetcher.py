@@ -116,7 +116,8 @@ def _store(entries, topic, source, channel=None, channel_url=None):
                 or CURRICULUM.search(e.get("title") or ""):
             continue
         rows.append({"id": e["id"], "title": e.get("title"), "duration": d, "view_count": e.get("view_count"),
-                     "upload_date": e.get("upload_date"),
+                     "upload_date": e.get("upload_date") or (time.strftime("%Y%m%d", time.gmtime(e["timestamp"]))
+                                                             if e.get("timestamp") else None),
                      "channel": e.get("channel") or e.get("uploader") or channel,
                      "channel_url": channel_url or e.get("channel_url") or e.get("uploader_url")})
     db.add_candidates(topic, rows, source)
