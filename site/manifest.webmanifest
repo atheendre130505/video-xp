@@ -2,6 +2,7 @@
   "name": "Video XP",
   "short_name": "Video XP",
   "description": "Educational and artistic videos, learned from your good / not good",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

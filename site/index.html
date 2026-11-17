@@ -600,6 +600,7 @@ document.addEventListener("touchstart", e => { if (e.target.closest(".ctl")) sho
 // ---------------- start ----------------
 if (location.hash) history.replaceState(null, "", location.pathname);    // old setup links: nothing to set up any more
 renderPrefs();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});   // installable as an app
 load().then(async () => {
   listen();
   const switched = await Promise.race([pull(), new Promise(r => setTimeout(() => r(false), 7000))]);
