@@ -254,6 +254,7 @@ def export_site(site):
     lab_cat = np.array([cats.index(rows[i]["topic"]) for i in lab])
     L = En[lab]
     k = min(KNN, len(lab))
+    featured_names = fetcher.featured_channels()           # featured podcasts/talks: never dropped, best guess wins
     for s0 in range(0, len(unl), 2000):
         chunk = unl[s0:s0 + 2000]
         S_ = En[chunk] @ L.T
@@ -265,7 +266,8 @@ def export_site(site):
             np.add.at(votes, lab_cat[nb], np.maximum(sims, 0))
             best = int(votes.argmax())
             share = votes[best] / (votes.sum() or 1)
-            rows[i]["topic"] = cats[best] if share >= KNN_MIN_SHARE and sims.max() >= KNN_MIN_SIM else UNSORTED
+            sure = share >= KNN_MIN_SHARE and sims.max() >= KNN_MIN_SIM
+            rows[i]["topic"] = cats[best] if sure or rows[i]["channel"] in featured_names else UNSORTED
     keep = [i for i, r in enumerate(rows) if r["topic"] != UNSORTED]
     log.info("topics: %d known, %d sorted by vote, %d left unsorted (not shown)",
              len(lab), len(unl) - (len(rows) - len(keep)), len(rows) - len(keep))

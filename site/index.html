@@ -13,7 +13,9 @@
   html, body { margin:0; height:100%; background:var(--bg); overflow:hidden; overscroll-behavior:none; color:#eee;
                font:15px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
   /* player is 120px taller than the screen so YouTube's own title bar / end-screen strip sit off-screen */
-  #player, #player iframe { position:fixed; left:0; top:-60px; width:100vw; height:calc(100dvh + 120px); border:0; }
+  /* … and never wider than a 16:9 picture at full screen height, so the whole video fits (black bars, no cropping) */
+  #player, #player iframe { position:fixed; left:50%; transform:translateX(-50%); top:-60px; width:min(100vw, calc(100dvh * 16 / 9));
+                            height:calc(100dvh + 120px); border:0; }
   #layer { position:fixed; inset:0; z-index:2; cursor:none; touch-action:none; -webkit-tap-highlight-color:transparent; }
   #layer.awake { cursor:default; }
   .ctl { position:fixed; z-index:3; opacity:0; transition:opacity .25s; pointer-events:none; }
@@ -26,7 +28,7 @@
   #rail button.txt { font:700 15px system-ui, sans-serif; }
   #rail button.on { background:#eee; color:#111; }
   #rail button.on.good { background:var(--good); } #rail button.on.bad { background:var(--bad); }
-  body.ad #player, body.ad #player iframe { top:0; height:100dvh; }
+  body.ad #player, body.ad #player iframe { top:0; height:100dvh; width:100vw; }
   body.ad #layer { pointer-events:none; }
   #adpill { position:fixed; left:16px; top:16px; z-index:7; display:none; padding:8px 14px; border-radius:999px; font-weight:700;
             background:#ffd400; color:#111; pointer-events:none; }
@@ -57,6 +59,7 @@
 <div class="ctl" id="rail">
   <button class="good" id="good" title="Good recommendation (G)">👍</button>
   <button class="bad" id="bad" title="Not good (B)">👎</button>
+  <button class="txt" id="cc" title="Captions (C)">CC</button>
   <button class="txt" id="fs" title="Full screen (F)">⛶</button>
 </div>
 <div id="adpill">Ad · use YouTube’s “Skip” button in the video</div>
@@ -117,37 +120,81 @@ function taste() {
 function cos(i, v) { let s = 0; const o = i * D.dim; for (let k = 0; k < D.dim; k++) s += D.vec[o + k] * v[k]; return s / 127; }
 
 // ---------------- what plays next ----------------
-// 1) inside a series (Episode 1, 2, 3…): the next episode, in order, until it's done
-// 2) otherwise: the next topic in the cycle (History → Physics → Film → …), and within it:
-//    - with probability `explore` a random video (new channels first), otherwise the best one for you;
+// One topic a day (the same on every device), and around it its closest topics: on a Finance day, Finance with
+// e.g. Economics and Business mixed in. The next day's topic starts with the first video after midnight.
+// 1) inside a series (Episode 1, 2, 3...): the next episode, in order, until it's done (same day only)
+// 2) otherwise: alternately the day's topic and one of its 2 nearest topics; within that topic:
+//    - with probability "explore" a random video (new channels first), otherwise the best one for you;
 //      explore starts high and shrinks as your ratings accumulate (~60% at 20 ratings, ~15% from ~100)
-//    - never a channel you saw in the last 5 videos; channels seen often lately rank lower
-//    A series always starts from its earliest episode you haven't seen.
+//    - never a channel you saw in the last 5 videos; never something too close to the last 5 videos
 let recentCh = LS.get("recentCh", []);                 // channels of the last 40 videos, oldest first
-function noteChannel(ch) { if (!ch) return; recentCh = [...recentCh, ch].slice(-40); LS.set("recentCh", recentCh); }
+let recentIds = LS.get("recentIds", []);               // last 10 videos
+function noteChannel(ch, id) {
+  if (ch) { recentCh = [...recentCh, ch].slice(-40); LS.set("recentCh", recentCh); }
+  if (id) { recentIds = [...recentIds, id].slice(-10); LS.set("recentIds", recentIds); }
+}
 function exploreRate() {
   const n = Math.max(Object.keys(ratings).length, cloud.reactions || 0);
   return Math.max(0.15, 0.85 * Math.exp(-n / 60));
+}
+const SAME_CONTENT = 0.8;                              // similarity above this to a recent video = "the same content"
+const dayNo = () => { const d = new Date(); return Math.floor((d - d.getTimezoneOffset() * 60000) / 864e5); };
+let nearCache = null;
+function nearTopics() {                                // topic -> its 2 closest topics, by the average of their videos
+  if (nearCache) return nearCache;
+  const cen = {};
+  for (const r of D.rows) {
+    const c = cen[r.topic] || (cen[r.topic] = new Float32Array(D.dim)), o = r.i * D.dim;
+    for (let k = 0; k < D.dim; k++) c[k] += D.vec[o + k];
+  }
+  for (const c of Object.values(cen)) { let m = 0; for (const x of c) m += x * x; m = Math.sqrt(m) || 1; for (let k = 0; k < D.dim; k++) c[k] /= m; }
+  const dot = (a, b) => { let s = 0; for (let k = 0; k < D.dim; k++) s += a[k] * b[k]; return s; };
+  nearCache = {};
+  for (const t of Object.keys(cen))
+    nearCache[t] = Object.keys(cen).filter(u => u !== t).sort((a, b) => dot(cen[t], cen[b]) - dot(cen[t], cen[a])).slice(0, 2);
+  return nearCache;
+}
+function vsim(i, j) {                                  // similarity of two videos
+  let s = 0, a = 0, b = 0; const oi = i * D.dim, oj = j * D.dim;
+  for (let k = 0; k < D.dim; k++) { const x = D.vec[oi + k], y = D.vec[oj + k]; s += x * y; a += x * x; b += y * y; }
+  return s / (Math.sqrt(a * b) || 1);
+}
+function dayTopic(free) {                              // today's topic: the topics take turns, one per day
+  const order = D.topics, d = dayNo();
+  for (let step = 0; step < order.length; step++) {
+    const t = order[(d + step) % order.length];
+    if (free.filter(r => r.topic === t).length >= 5) return t;
+  }
+  return order[d % order.length];
 }
 function pickNext() {
   const busy = new Set([S.cur, ...S.queue].filter(Boolean).map(v => v.id));
   const free = D.rows.filter(r => !seen.has(r.id) && !busy.has(r.id) && !progress[r.id]);
   if (!free.length) return null;
   const last = S.queue.length ? S.queue[S.queue.length - 1] : (S.cur || S.played[S.played.length - 1]);
-  if (last && last.s) {
+  const today = dayNo();
+  if (last && last.s && (last.day == null || last.day === today)) {
     const ep = free.filter(r => r.s === last.s && r.n > last.n).sort((a, b) => a.n - b.n)[0];
-    if (ep) return ep;
+    if (ep) return { ...ep, day: today };
   }
   const recent = [...recentCh, ...S.queue.map(v => v.channel)];
   const blocked = new Set(recent.slice(-5));
   const often = ch => recent.filter(c => c === ch).length;
+  const lastFive = [...recentIds, ...S.queue.map(v => v.id)].slice(-5).map(id => D.byId.get(id)).filter(Boolean);
+  const tooClose = r => lastFive.some(x => vsim(r.i, x.i) > SAME_CONTENT);
   const T = taste();
   const score = r => r.p + (T ? 0.35 * cos(r.i, T) : 0) - 0.12 * often(r.channel) - (blocked.has(r.channel) ? 1 : 0);
   const explore = Math.random() < exploreRate();
-  const order = D.topics, k = last ? order.indexOf(last.topic) : -1;
-  for (let step = 1; step <= order.length; step++) {
-    const t = order[(k + step + order.length) % order.length];
-    const pool = free.filter(r => r.topic === t);
+  const main = dayTopic(free), near = nearTopics()[main] || [];
+  // slot within the day: day topic, near 1, day topic, near 2, ...
+  const k = LS.get("daySlot", { day: today, n: 0 });
+  if (k.day !== today) { k.day = today; k.n = 0; }
+  const slot = k.n++; LS.set("daySlot", k);
+  const want = slot % 2 === 0 || !near.length ? [main, ...near] : [near[(slot >> 1) % near.length], main, ...near];
+  for (const t of want) {
+    const all = free.filter(r => r.topic === t);
+    const apart = all.filter(r => !tooClose(r));
+    const pool = apart.length ? apart : all;
     if (!pool.length) continue;
     let v;
     if (explore) {
@@ -157,9 +204,9 @@ function pickNext() {
       v = from[Math.floor(Math.random() * from.length)];
     } else v = pool.sort((a, b) => score(b) - score(a))[0];
     if (v.s) v = free.filter(r => r.s === v.s).sort((a, b) => a.n - b.n)[0];   // start the series at the beginning
-    return v;
+    return { ...v, day: today };
   }
-  return free.sort((a, b) => score(b) - score(a))[0];
+  return { ...free.sort((a, b) => score(b) - score(a))[0], day: today };
 }
 function fill() { while (S.queue.length < 2) { const v = pickNext(); if (!v) break; S.queue.push(v); } }
 
@@ -172,7 +219,9 @@ const ytOk = () => ytReady || !!(window.YT && window.YT.loaded && window.YT.Play
 function advance() {
   saveProgress(true);
   if (S.cur) S.played.push(S.cur);
-  S.cur = null; fill();
+  S.cur = null;
+  if (S.queue.some(v => v.day != null && v.day !== dayNo())) S.queue = [];
+  fill();
   const v = S.queue.shift();
   if (!v) { $("#wait").textContent = "That’s everything for now. New videos arrive with the next cloud run."; return; }
   $("#wait").textContent = ""; play(v); fill();
@@ -183,7 +232,7 @@ const furthest = (id, at = 0) => Math.max(at || 0, progress[id]?.pos || 0);
 
 function play(v, at = 0, paused = false) {
   at = furthest(v.id, at);
-  if (!S.cur || S.cur.id !== v.id) noteChannel(v.channel);
+  if (!S.cur || S.cur.id !== v.id) noteChannel(v.channel, v.id);
   S.cur = v; S.watched = 0; S.secs = 0; S.fast = 0; S.skips = 0; S.ended = false; hideAsk(); loadSegments(v.id); document.body.classList.remove("ad");
   const r = ratings[v.id];
   $("#good").classList.toggle("on", !!r && r.w > 0); $("#bad").classList.toggle("on", !!r && r.w < 0);
@@ -192,7 +241,7 @@ function play(v, at = 0, paused = false) {
     if (player && player.loadVideoById) { player[paused ? "cueVideoById" : "loadVideoById"]({ videoId: v.id, startSeconds: at }); return; }
     player = new YT.Player("player", { videoId: v.id, host: "https://www.youtube-nocookie.com",
       playerVars: { autoplay: paused ? 0 : 1, mute: 1, controls: 0, disablekb: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, fs: 0,
-                    start: Math.floor(at), cc_load_policy: 0 },
+                    start: Math.floor(at), cc_load_policy: pref.cc ? 1 : 0, cc_lang_pref: "en" },
       events: {
         onReady: () => { if (S.activated) player.unMute(); },
         onStateChange: e => {
@@ -454,14 +503,13 @@ function mergeProgress(id, p) {
                                              d: p.d || old?.d || row?.dur, g: p.g || old?.g || row?.topic, soft: p.soft ? 1 : 0 };
 }
 
-// ---------------- every video: fixed 1.2x, no captions ----------------
+// ---------------- every video: fixed 1.2x; captions on / off (C) ----------------
 const SPEED = 1.2;
-function applyPrefs() {
-  if (!player || !player.setPlaybackRate) return;
-  player.setPlaybackRate(SPEED);
-  try { player.setOption("captions", "track", {}); player.unloadModule("captions"); } catch {}   // captions off, always
-}
-function renderPrefs() {}
+const pref = LS.get("pref", { cc: true });
+function applyPrefs() { if (!player || !player.setPlaybackRate) return; player.setPlaybackRate(SPEED); setCaptions(pref.cc); renderPrefs(); }
+function setCaptions(on) { try { if (on) { player.loadModule("captions"); player.setOption("captions", "track", { languageCode: "en" }); } else { player.setOption("captions", "track", {}); player.unloadModule("captions"); } } catch {} }
+function toggleCaptions() { pref.cc = !pref.cc; LS.set("pref", pref); setCaptions(pref.cc); renderPrefs(); toast(pref.cc ? "Captions on" : "Captions off"); }
+function renderPrefs() { $("#cc").classList.toggle("on", pref.cc); }
 let toastT; function toast(m) { $("#toast").textContent = m; $("#toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("#toast").classList.remove("show"), 1400); }
 
 const sheetOpen = () => false;
@@ -492,6 +540,7 @@ document.addEventListener("keydown", e => {
   else if (k === "g" || k === "l") react(1);
   else if (k === "b" || k === "d") react(-1);
   else if (k === "f") toggleFullscreen();
+  else if (k === "c") toggleCaptions();
 });
 // tap / click = pause or play
 $("#layer").addEventListener("click", e => {
@@ -503,6 +552,7 @@ $("#layer").addEventListener("click", e => {
 $("#good").onclick = () => react(1);
 $("#bad").onclick = () => react(-1);
 $("#fs").onclick = toggleFullscreen;
+$("#cc").onclick = toggleCaptions;
 const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
 function renderFs() { $("#fs").classList.toggle("on", isFull()); $("#fs").title = isFull() ? "Exit full screen (F)" : "Full screen (F)"; }
 document.addEventListener("fullscreenchange", renderFs); document.addEventListener("webkitfullscreenchange", renderFs);

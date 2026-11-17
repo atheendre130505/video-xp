@@ -57,3 +57,5 @@ https://www.youtube.com/channel/UCA295QVkf9O1RQ8_-s3FVXg   # Aevy TV ("avey tv")
 https://www.youtube.com/channel/UCphTF9wHwhCt-BzIq-s4V-g   # What If
 @RajShamani | featured
 @joerogan | featured            # The Joe Rogan Experience (PowerfulJRE)
+@lexfridman | featured           # Lex Fridman Podcast
+@nikhil.kamath | featured        # Nikhil Kamath (WTF podcast)

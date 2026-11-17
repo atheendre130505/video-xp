@@ -11,12 +11,14 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 | good / not good | G / B (or move the mouse → 👍 👎) | tap → 👍 👎 |
 | pause | click, Space | tap |
 | full screen on / off | F | tap → ⛶ |
+| captions on / off | C | tap → CC |
 
 - Nothing asks you to rate. The buttons stay hidden until you tap (phone) or move the mouse (laptop).
 - When a video ends it waits: the next one starts only after you tap 👍 or 👎.
 - 👍 / 👎 is the only way to the next video: no next / previous keys or swipes, so a stray key can't skip one.
 - A video always resumes from the furthest point it reached, on any device.
-- Every video plays at 1.2× without captions. There is no speed control and no skipping ahead or back.
+- Every video plays at 1.2×, captions on by default, and always fits the screen (black bars rather than cropping).
+  There is no speed control and no skipping ahead or back.
 - Anything you reacted to is never shown again (it stays in the database for learning).
 - **Ads:** sponsor reads inside a video are skipped automatically (SponsorBlock data). If YouTube plays its own ad,
   an "Ad" label appears and your tap reaches YouTube's Skip button. Trailers and product promos are kept out of
@@ -25,9 +27,11 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 - Close the app mid-video and it resumes there, on any synced device.
 
 ## What plays
-Topics take turns: after a video, the next one comes from the next topic in the cycle (30 topics, from History → Physics →
-Film → Economics → … to Nature; edit `CATEGORIES` in fetcher.py), the best video of that topic for you. A series (Episode 1, 2, 3…, Part 1/2…) plays in order
-to the end before the topic moves on, and always starts from its earliest episode you haven't seen.
+One topic a day, the same on every device: the 30 topics (History, Physics, Film, Economics … Nature; edit
+`CATEGORIES` in fetcher.py) take turns, one per day. The day's topic alternates with its two closest topics
+(a Finance day mixes in Business and Economics), and nothing too similar to the last 5 videos is picked.
+The next day's topic starts with the first video after midnight. A series (Episode 1, 2, 3…, Part 1/2…) plays in order
+from its earliest episode you haven't seen.
 Within a topic it sometimes picks at random (new channels first): often at the start, less as your ratings
 accumulate (about 60% at 20 ratings, 15% from about 100). A channel never repeats within 5 videos.
 The pool mixes your subscriptions, the must-watch channels in `essentials.txt` and new channels found by topic searches.
