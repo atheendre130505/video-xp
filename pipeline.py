@@ -427,7 +427,7 @@ def export_site(site):
                       round(float(comp[i]), 3), age[i]] for i in sel],
             "vec": base64.b64encode(q8(Z[sel]).tobytes()).decode()}
     site.mkdir(parents=True, exist_ok=True)
-    for name in ("index.html", "icon.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "sw.js"):
+    for name in ("index.html", "icon.png"):
         shutil.copy(ROOT / "site" / name, site / name)
     (site / "feed.json").write_text(json.dumps(feed, separators=(",", ":")), encoding="utf-8")
 
