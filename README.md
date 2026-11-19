@@ -4,8 +4,8 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 **your judgement**: it plays a video, you say **good** or **not good**, and it learns. No choosing, no search.
 
 **Open it:** https://atheendre130505.github.io/video-xp/
-- **Laptop:** the "Video XP" Desktop shortcut (or `start.bat`) opens it as its own app window in Chrome, without tabs or
-  an address bar (`scripts/windows/`).
+- **Laptop:** the "Video XP" Desktop shortcut (or `start.bat`) opens it as its own app window in Brave (no YouTube ads),
+  without tabs or an address bar (`scripts/windows/`). Chrome / Edge only if Brave isn't installed.
 - **Phone:** open the link in Brave (its shields block YouTube's ads). It's a plain web page, not an installed app,
   so every update arrives the next time it's opened.
 
