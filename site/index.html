@@ -557,18 +557,20 @@ const SPEED = 1.2;
 const pref = LS.get("pref", { cc: true });
 function applyPrefs() { if (!player || !player.setPlaybackRate) return; player.setPlaybackRate(SPEED); ccState = { id: null, tries: 0 }; keepCaptions(); renderPrefs(); }
 // YouTube loads the caption list a little after the video starts (later on a slow network) and sometimes drops the
-// track between videos. So: every 2 s, if captions should be on and none is showing, pick a track once the list is
-// there. It only acts when nothing is showing, so a working track is never touched (no flicker).
+// track between videos. So: every 2 s, if captions should be on, make sure we have chosen a track for this video
+// ourselves (the player can report a track as "on" while drawing nothing, e.g. after captions were switched off and on).
+// Once chosen and still on, it's left alone (no flicker). Off = no track; the caption module is never unloaded,
+// because after unloading YouTube doesn't reliably draw captions again.
 let ccState = { id: null, tries: 0 };
 function keepCaptions() {
   if (!player || !player.getOption || !S.cur || adPlaying()) return;
   try {
     if (!pref.cc) {
-      if (ccState.id !== "off:" + S.cur.id) { player.setOption("captions", "track", {}); player.unloadModule("captions"); ccState.id = "off:" + S.cur.id; }
+      if (ccState.id !== "off:" + S.cur.id) { player.setOption("captions", "track", {}); ccState.id = "off:" + S.cur.id; }
       return;
     }
     const cur = player.getOption("captions", "track");
-    if (cur && cur.languageCode) { ccState.id = S.cur.id; return; }          // showing
+    if (ccState.id === S.cur.id && cur && cur.languageCode) return;          // chosen by us for this video, still on
     const list = player.getOption("captions", "tracklist") || [];
     if (!list.length) {                                                       // list not there yet: ask for it, now and then
       if (ccState.tries++ % 3 === 0) player.loadModule("captions");
@@ -576,11 +578,15 @@ function keepCaptions() {
     }
     const en = list.filter(t => /^en/i.test(t.languageCode || ""));
     const pick = en.find(t => t.kind !== "asr") || en[0] || list.find(t => t.kind !== "asr") || list[0];
-    player.setOption("captions", "track", pick);
+    player.setOption("captions", "track", pick); ccState.id = S.cur.id;
   } catch {}
 }
 setInterval(keepCaptions, 2000);
-function setCaptions(on) { ccState = { id: null, tries: 0 }; if (on) keepCaptions(); else { try { player.setOption("captions", "track", {}); player.unloadModule("captions"); } catch {} } }
+function setCaptions(on) {
+  ccState = { id: null, tries: 0 };
+  try { if (on) { player.loadModule("captions"); keepCaptions(); } else player.setOption("captions", "track", {}); } catch {}
+  if (!on && S.cur) ccState.id = "off:" + S.cur.id;
+}
 function toggleCaptions() { pref.cc = !pref.cc; LS.set("pref", pref); setCaptions(pref.cc); renderPrefs(); toast(pref.cc ? "Captions on" : "Captions off"); }
 function renderPrefs() { $("#cc").classList.toggle("on", pref.cc); }
 let toastT; function toast(m) { $("#toast").textContent = m; $("#toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("#toast").classList.remove("show"), 1400); }
