@@ -140,9 +140,16 @@ def video(vid):
 
 
 def add_events(batch):
+    # liked: 1 good, -1 not good, 0 already seen (never shown again, not a taste signal), None = progress only.
+    # undo: forget every reaction to that video (a mis-tap); it comes back as unfinished at its position.
     with conn() as c:
+        for e in batch:
+            if e.get("undo"):
+                c.execute("DELETE FROM events WHERE video_id=? AND liked IS NOT NULL AND ts <= ?",
+                          (e["id"], float(e.get("ts") or time.time())))
         c.executemany("INSERT INTO events (video_id, topic, watched, duration, liked, ts, pos, soft) VALUES (?,'',?,?,?,?,?,?)",
-                      [(e["id"], float(e.get("watched") or 0), float(e.get("duration") or 0), e.get("liked"),
+                      [(e["id"], float(e.get("watched") or 0), float(e.get("duration") or 0),
+                        None if e.get("undo") else e.get("liked"),
                         float(e.get("ts") or time.time()), e.get("pos"), int(bool(e.get("soft")))) for e in batch])
 
 

@@ -436,12 +436,13 @@ def export_site(site):
     for e in db.events():
         last[e["video_id"]] = e                               # oldest first -> latest wins
     cutoff = time.time() - 30 * 86400
+    rated = [r["video_id"] for r in db.q("SELECT DISTINCT video_id FROM events WHERE liked IS NOT NULL")]   # incl. already seen
+    done = set(rated) | set(reacted)
     progress = [{"id": vid, "t": ev_rows[vid]["title"], "c": ev_rows[vid]["channel"], "d": ev_rows[vid]["duration"],
                  "pos": e["pos"], "ts": e["ts"]}
                 for vid, e in last.items()
-                if vid not in reacted and vid in ev_rows and e.get("pos") and (e["ts"] or 0) > cutoff]
+                if vid not in done and vid in ev_rows and e.get("pos") and (e["ts"] or 0) > cutoff]
     progress.sort(key=lambda p: -p["ts"])
-    rated = [r["video_id"] for r in db.q("SELECT DISTINCT video_id FROM events WHERE liked IS NOT NULL")]
     state = {"generated": gen, "taste": [round(float(x), 4) for x in taste], "rated": rated,
              "progress": progress[:10], "reactions": len(reacted), "topics": dict(topic_stats)}
     (site / "state.json").write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")

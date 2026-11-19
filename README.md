@@ -18,11 +18,14 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 | captions on / off | C | tap → CC |
 
 - Nothing asks you to rate. The buttons stay hidden until you tap (phone) or move the mouse (laptop).
-- When a video ends it waits: the next one starts only after you tap 👍 or 👎.
+- 👍 / 👎 asks to confirm first (Enter / tap "Yes"), with **Already seen** (S) as a third choice: a video you watched
+  elsewhere is never shown again but says nothing about your taste. Esc or a tap on the video cancels.
+- When a video ends it waits: the next one starts only after you confirm 👍 or 👎 (or Already seen).
 - 👍 / 👎 is the only way to the next video: no next / previous keys or swipes, so a stray key can't skip one.
 - A video always resumes from the furthest point it reached, on any device.
 - Every video plays at 1.2×, captions on by default (checked every 2 s and put back if YouTube drops them),
-  and always fits the screen (black bars rather than cropping).
+  and always fits the screen (black bars rather than cropping). Nothing is clipped, so captions are always fully
+  visible (a few videos place their own captions at the top of the picture; YouTube doesn't let a page move them).
   There is no speed control and no skipping ahead or back.
 - Anything you reacted to is never shown again (it stays in the database for learning).
 - **Ads:** sponsor reads inside a video are skipped automatically (SponsorBlock data). If YouTube plays its own ad,
