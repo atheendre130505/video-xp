@@ -32,6 +32,8 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
   an "Ad" label appears and your tap reaches YouTube's Skip button. Trailers and product promos are kept out of
   the feed. Opening the site in Brave blocks YouTube's own ads altogether.
 - Leave the tab or app and the video pauses; come back and it carries on.
+- Paused or finished, the screen goes black (a faint ❚❚ when paused): YouTube's own title, "More videos", replay
+  button and logo never show.
 - Close the app mid-video and it resumes there, on any synced device.
 
 ## What plays

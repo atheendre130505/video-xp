@@ -13,6 +13,12 @@
   /* the player is exactly the screen: YouTube fits the whole video inside (black bars, no cropping) and nothing is
      clipped, so captions are always fully visible, including ones a video places at the top of the picture */
   #player, #player iframe { position:fixed; inset:0; width:100vw; height:100dvh; border:0; }
+  /* whenever the video isn't playing (paused, ended, not started), YouTube draws its own title, "More videos", replay
+     button and logo over it: cover the player with black then. Taps still reach #layer above. */
+  #cover { position:fixed; inset:0; z-index:1; background:#000; display:none; align-items:center; justify-content:center;
+           color:#3a3a3a; font:700 44px system-ui, sans-serif; letter-spacing:6px; pointer-events:none; }
+  body.stopped #cover { display:flex; }
+  body.ad #cover { display:none; }
   #layer { position:fixed; inset:0; z-index:2; cursor:none; touch-action:none; -webkit-tap-highlight-color:transparent; }
   #layer.awake { cursor:default; }
   .ctl { position:fixed; z-index:3; opacity:0; transition:opacity .25s; pointer-events:none; }
@@ -61,6 +67,7 @@
 <body>
 <div id="player"></div>
 <div id="wait">loading…</div>
+<div id="cover"></div>
 <div id="layer"></div>
 <div class="ctl" id="rail">
   <button class="good" id="good" title="Good recommendation (G)">👍</button>
@@ -256,6 +263,7 @@ function play(v, at = 0, paused = false) {
   const r = ratings[v.id];
   $("#good").classList.toggle("on", !!r && r.w > 0); $("#bad").classList.toggle("on", !!r && r.w < 0);
   document.title = v.title || "Video XP";
+  document.body.classList.add("stopped");                // black until it actually plays
   const go = () => {
     if (player && player.loadVideoById) { player[paused ? "cueVideoById" : "loadVideoById"]({ videoId: v.id, startSeconds: at }); return; }
     player = new YT.Player("player", { videoId: v.id, host: "https://www.youtube-nocookie.com",
@@ -264,6 +272,9 @@ function play(v, at = 0, paused = false) {
       events: {
         onReady: () => { if (S.activated) player.unMute(); },
         onStateChange: e => {
+          // black cover unless playing / buffering; a quiet ❚❚ when paused, nothing at the end (it just waits)
+          document.body.classList.toggle("stopped", e.data !== YT.PlayerState.PLAYING && e.data !== YT.PlayerState.BUFFERING);
+          $("#cover").textContent = e.data === YT.PlayerState.PAUSED ? "❚❚" : "";
           if (e.data === YT.PlayerState.ENDED) S.ended = true;          // never auto-advances: waits for 👍 / 👎
           if (e.data === YT.PlayerState.PLAYING && S.applied !== S.cur?.id) { S.applied = S.cur?.id; applyPrefs(); }
           if (e.data === YT.PlayerState.PAUSED) { saveProgress(); if (!following) announceSoon("paused"); }
