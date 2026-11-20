@@ -17,7 +17,9 @@ YouTube and Instagram recommend for watch time, which favours drama and clickbai
 | full screen on / off | F | tap → ⛶ |
 | captions on / off | C | tap → CC |
 
-- Nothing asks you to rate. The buttons stay hidden until you tap (phone) or move the mouse (laptop).
+- Nothing asks you to rate. The buttons stay hidden until you tap (phone) or move the mouse (laptop), and fade 2 s later.
+- Only the video and its captions show. YouTube puts up its own title, pause button and "More videos" row for ~5 s
+  after a video starts or resumes; those strips are blacked out (the button blurred) until it's gone.
 - 👍 / 👎 asks to confirm first (Enter / tap "Yes"), with **Already seen** (S) as a third choice: a video you watched
   elsewhere is never shown again but says nothing about your taste. Esc or a tap on the video cancels.
 - When a video ends it waits: the next one starts only after you confirm 👍 or 👎 (or Already seen).

@@ -18,6 +18,15 @@
   #cover { position:fixed; inset:0; z-index:1; background:#000; display:none; align-items:center; justify-content:center;
            color:#3a3a3a; font:700 44px system-ui, sans-serif; letter-spacing:6px; pointer-events:none; }
   body.stopped #cover { display:flex; }
+  /* for ~5 s after a video starts or resumes YouTube shows its title (top), a pause button (centre) and a
+     "More videos" / logo row (bottom), and no player setting turns that off: black out those strips, blur the button */
+  .mask { position:fixed; z-index:1; pointer-events:none; opacity:0; transition:opacity .25s; }
+  body.yt .mask { opacity:1; transition:none; }
+  body.ad .mask { display:none; }
+  #maskTop { left:0; right:0; top:0; height:clamp(48px, 11vh, 140px); background:#000; }
+  #maskBottom { left:0; right:0; bottom:0; height:clamp(40px, 6.5vh, 80px); background:#000; }
+  #maskMid { left:50%; top:50%; width:clamp(72px, 8vw, 120px); aspect-ratio:1; transform:translate(-50%, -50%);
+             border-radius:50%; backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
   body.ad #cover { display:none; }
   #layer { position:fixed; inset:0; z-index:2; cursor:none; touch-action:none; -webkit-tap-highlight-color:transparent; }
   #layer.awake { cursor:default; }
@@ -68,6 +77,7 @@
 <div id="player"></div>
 <div id="wait">loading…</div>
 <div id="cover"></div>
+<div class="mask" id="maskTop"></div><div class="mask" id="maskMid"></div><div class="mask" id="maskBottom"></div>
 <div id="layer"></div>
 <div class="ctl" id="rail">
   <button class="good" id="good" title="Good recommendation (G)">👍</button>
@@ -274,11 +284,12 @@ function play(v, at = 0, paused = false) {
         onStateChange: e => {
           // black cover unless playing / buffering; a quiet ❚❚ when paused, nothing at the end (it just waits)
           document.body.classList.toggle("stopped", e.data !== YT.PlayerState.PLAYING && e.data !== YT.PlayerState.BUFFERING);
+          if (e.data === YT.PlayerState.PLAYING) maskYouTube();
           $("#cover").textContent = e.data === YT.PlayerState.PAUSED ? "❚❚" : "";
           if (e.data === YT.PlayerState.ENDED) S.ended = true;          // never auto-advances: waits for 👍 / 👎
           if (e.data === YT.PlayerState.PLAYING && S.applied !== S.cur?.id) { S.applied = S.cur?.id; applyPrefs(); }
           if (e.data === YT.PlayerState.PAUSED) { saveProgress(); if (!following) announceSoon("paused"); }
-          if (e.data === YT.PlayerState.PLAYING && !adPlaying()) { following = false; announceSoon("playing"); hideSoon(2500); }
+          if (e.data === YT.PlayerState.PLAYING && !adPlaying()) { following = false; announceSoon("playing"); hideSoon(2000); }
         },
         onError: () => { if (S.cur) { seen.add(S.cur.id); LS.set("seen", [...seen].slice(-8000)); } S.cur = null; advance(); } } });
   };
@@ -399,7 +410,11 @@ document.addEventListener("visibilitychange", () => { document.visibilityState =
 window.addEventListener("blur", () => setTimeout(() => { if (!document.hasFocus() && document.activeElement?.tagName !== "IFRAME") away(); }, 0));
 window.addEventListener("focus", returned);
 
-function ask() { showControls(); }                     // no prompt: the buttons appear as for a tap, then fade
+let maskT;
+function maskYouTube() {                               // YouTube's own overlay stays ~5 s after (re)starting
+  document.body.classList.add("yt"); clearTimeout(maskT);
+  maskT = setTimeout(() => document.body.classList.remove("yt"), 5800);
+}
 function hideAsk() { closeAsk(); }                 // a new video closes any open confirm box
 
 // ---------------- sync: one shared relay, no setup ----------------
@@ -664,7 +679,7 @@ function hideSoon(ms) {
   clearTimeout(idle);
   idle = setTimeout(() => { $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
 }
-function showControls(ms = 2200) {
+function showControls(ms = 2000) {             // your buttons: on mouse move / tap, gone 2 s later
   $("#rail").classList.add("show"); $("#layer").classList.add("awake");
   clearTimeout(idle); idle = setTimeout(() => { $("#rail").classList.remove("show"); $("#layer").classList.remove("awake"); }, ms);
 }
