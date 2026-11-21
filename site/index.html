@@ -275,26 +275,46 @@ function play(v, at = 0, paused = false) {
   document.title = v.title || "Video XP";
   document.body.classList.add("stopped");                // black until it actually plays
   const go = () => {
-    if (player && player.loadVideoById) { player[paused ? "cueVideoById" : "loadVideoById"]({ videoId: v.id, startSeconds: at }); return; }
-    player = new YT.Player("player", { videoId: v.id, host: "https://www.youtube-nocookie.com",
-      playerVars: { autoplay: paused ? 0 : 1, mute: 1, controls: 0, disablekb: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, fs: 0,
-                    start: Math.floor(at), cc_load_policy: pref.cc ? 1 : 0, cc_lang_pref: "en" },
-      events: {
-        onReady: () => { if (S.activated) player.unMute(); },
-        onStateChange: e => {
-          // black cover unless playing / buffering; a quiet ❚❚ when paused, nothing at the end (it just waits)
-          document.body.classList.toggle("stopped", e.data !== YT.PlayerState.PLAYING && e.data !== YT.PlayerState.BUFFERING);
-          if (e.data === YT.PlayerState.PLAYING) maskYouTube();
-          $("#cover").textContent = e.data === YT.PlayerState.PAUSED ? "❚❚" : "";
-          if (e.data === YT.PlayerState.ENDED) S.ended = true;          // never auto-advances: waits for 👍 / 👎
-          if (e.data === YT.PlayerState.PLAYING && S.applied !== S.cur?.id) { S.applied = S.cur?.id; applyPrefs(); }
-          if (e.data === YT.PlayerState.PAUSED) { saveProgress(); if (!following) announceSoon("paused"); }
-          if (e.data === YT.PlayerState.PLAYING && !adPlaying()) { following = false; announceSoon("playing"); hideSoon(2000); }
-        },
-        onError: () => { if (S.cur) { seen.add(S.cur.id); LS.set("seen", [...seen].slice(-8000)); } S.cur = null; advance(); } } });
+    const load = () => player[paused ? "cueVideoById" : "loadVideoById"]({ videoId: v.id, startSeconds: at });
+    if (!player) makePlayer(v.id, at, paused);
+    else if (playerReady) load();
+    else pendingLoad = load;                              // still starting up (warm-up): load it when ready
   };
   if (ytOk()) go(); else { const t = setInterval(() => { if (ytOk()) { clearInterval(t); go(); } }, 150); }
 }
+let playerReady = false, pendingLoad = null;
+function makePlayer(id, at, paused) {
+  player = new YT.Player("player", { videoId: id, host: "https://www.youtube-nocookie.com",
+    playerVars: { autoplay: paused ? 0 : 1, mute: 1, controls: 0, disablekb: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, fs: 0,
+                  start: Math.floor(at), cc_load_policy: pref.cc ? 1 : 0, cc_lang_pref: "en" },
+    events: {
+      onReady: () => {
+        playerReady = true;
+        if (S.activated) player.unMute();
+        if (pendingLoad) { const f = pendingLoad; pendingLoad = null; f(); }
+      },
+      onStateChange: e => {
+        if (!S.cur) return;                               // warm-up only: nothing chosen yet
+        // black cover unless playing / buffering; a quiet ❚❚ when paused, nothing at the end (it just waits)
+        document.body.classList.toggle("stopped", e.data !== YT.PlayerState.PLAYING && e.data !== YT.PlayerState.BUFFERING);
+        if (e.data === YT.PlayerState.PLAYING) maskYouTube();
+        $("#cover").textContent = e.data === YT.PlayerState.PAUSED ? "❚❚" : "";
+        if (e.data === YT.PlayerState.ENDED) S.ended = true;          // never auto-advances: waits for 👍 / 👎
+        if (e.data === YT.PlayerState.PLAYING && S.applied !== S.cur?.id) { S.applied = S.cur?.id; applyPrefs(); }
+        if (e.data === YT.PlayerState.PAUSED) { saveProgress(); if (!following) announceSoon("paused"); }
+        if (e.data === YT.PlayerState.PLAYING && !adPlaying()) { following = false; announceSoon("playing"); hideSoon(2000); }
+      },
+      onError: () => { if (!S.cur) return; seen.add(S.cur.id); LS.set("seen", [...seen].slice(-8000)); S.cur = null; advance(); } } });
+}
+// start loading YouTube's player (and the video most likely to play) while the sync runs: no player start-up wait later
+function warmUp() {
+  if (player) return;
+  const guess = (myNow && !seen.has(myNow.id) && myNow) ||
+    Object.entries(progress).filter(([id, p]) => !seen.has(id) && !ratings[id]).sort((a, b) => b[1].ts - a[1].ts).map(([id, p]) => ({ id, pos: p.pos }))[0];
+  const go = () => { if (!player) makePlayer(guess ? guess.id : "", guess ? furthest(guess.id, guess.pos) : 0, true); };
+  if (ytOk()) go(); else { const t = setInterval(() => { if (ytOk()) { clearInterval(t); go(); } }, 100); }
+}
+
 // ---------------- ads ----------------
 // 1) Sponsor reads inside a video: skipped automatically, using SponsorBlock's community timestamps.
 //    Lookup is by the first 4 characters of a hash of the video id, so the service doesn't learn what you watch.
@@ -514,6 +534,7 @@ function openHere(n) {
 
 function onMessage(b) {
   if (!b || b.dev === DEV) return;
+  if (answers && b.now) answers[b.dev] = { ...b.now, kind: b.kind || "laptop", dev: b.dev };
   // another device just opened and asks where we are: answer with the exact second, right away
   if (b.ask) { if (S.cur && !following) announce(playingHere() ? "playing" : "paused"); return; }
   for (const e of b.events || []) applyEvent(e, true);
@@ -537,12 +558,20 @@ function listen() {                                    // live link: messages ar
 }
 
 // on open / return: catch up, then continue from the most recent position on any device (laptop if it's playing)
+let answers = null;                                    // while opening: other devices' replies to our "where are you?"
 async function pull() {
-  // ask any other open device for its exact position; its answer lands in the relay before we read it
-  try { await fetch(RELAY, { method: "POST", body: JSON.stringify({ dev: DEV, kind: KIND, ask: 1 }) }); } catch {}
-  await new Promise(r => setTimeout(r, 2500));
+  // all at once: ask any other open device for its exact position (replies arrive on the live link), and fetch the
+  // synced state and the relay's recent history. Wait at most ~1.2 s for replies.
+  answers = {};
+  const asked = fetch(RELAY, { method: "POST", body: JSON.stringify({ dev: DEV, kind: KIND, ask: 1 }) }).catch(() => {});
+  const stP = fetch("state.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null).catch(() => null);
+  const relP = fetch(`${RELAY}/json?poll=1&since=12h`, { cache: "no-store" }).then(r => r.ok ? r.text() : "").catch(() => "");
+  await asked;
+  const t0 = Date.now();
+  const [st, txt] = await Promise.all([stP, relP]);
+  const left = 1200 - (Date.now() - t0);
+  if (left > 0 && !Object.keys(answers).length) await new Promise(r => setTimeout(r, left));
   try {
-    const st = await fetch("state.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null);
     if (st) {
       cloud = { generated: st.generated, taste: st.taste, reactions: st.reactions || 0, topics: st.topics || {} }; LS.set("cloud", cloud);
       for (const id of st.rated || []) seen.add(id);
@@ -551,7 +580,6 @@ async function pull() {
   } catch (e) { console.warn("state.json", e); }
   const latest = {};                                   // dev -> newest "now"
   try {
-    const txt = await fetch(`${RELAY}/json?poll=1&since=12h`, { cache: "no-store" }).then(r => r.ok ? r.text() : "");
     for (const line of txt.split("\n")) {
       if (!line.trim()) continue;
       let m; try { m = JSON.parse(line); } catch { continue; }
@@ -561,6 +589,8 @@ async function pull() {
       if (b.now && (!latest[b.dev] || b.now.ts > latest[b.dev].ts)) latest[b.dev] = { ...b.now, kind: b.kind || "laptop", dev: b.dev };
     }
   } catch (e) { console.warn("relay", e); }
+  for (const [dev, n] of Object.entries(answers)) if (!latest[dev] || n.ts > latest[dev].ts) latest[dev] = n;
+  answers = null;
   saveAll();
   if (myNow && (!latest[DEV] || myNow.ts > latest[DEV].ts)) latest[DEV] = { ...myNow, kind: KIND, dev: DEV };
   const all = Object.values(latest).filter(n => n.id && !seen.has(n.id));
@@ -693,7 +723,7 @@ renderPrefs();
 if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
 if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
 load().then(async () => {
-  listen();
+  listen(); warmUp();
   const switched = await Promise.race([pull(), new Promise(r => setTimeout(() => r(false), 7000))]);
   if (switched) { sync(); return; }
   // pick up where you left off on this device (or the most recent unfinished video anywhere)
